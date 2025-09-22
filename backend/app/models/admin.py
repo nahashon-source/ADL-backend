@@ -1,10 +1,12 @@
 from sqlmodel import SQLModel, Field
 from typing import Optional
+from pydantic import EmailStr
+
 
 class Admin(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    username: str = Field(index=True, unique=True)
-    email: str = Field(index=True, unique=True)
-    hashed_password: str
-    is_superadmin: bool = False  # Indicates if this admin has full access
-    is_active: bool = True
+    username: str = Field(index=True, unique=True, nullable=False, description="Unique admin username")
+    email: EmailStr = Field(index=True, unique=True, nullable=False, description="Admin email address")
+    hashed_password: str = Field(nullable=False, description="Hashed password for secure authentication")
+    is_superadmin: bool = Field(default=False, description="Indicates full access privileges")
+    is_active: bool = Field(default=True, description="Indicates whether the admin account is active")
