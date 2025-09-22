@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+from typing import Any
+
 from backend.app.db.session import get_session
 from backend.app.models.admin import Admin
 from backend.app.schemas.admin import AdminCreate, AdminRead, AdminLogin, Token
@@ -9,8 +11,11 @@ from backend.app.core.security import hash_password, verify_password, create_acc
 router = APIRouter(prefix="/admins", tags=["Admins"])
 
 # === Admin Registration ===
-@router.post("/register", response_model=AdminRead)
-async def register_admin(admin_in: AdminCreate, session: AsyncSession = Depends(get_session)):
+@router.post("/register", response_model=AdminRead, status_code=status.HTTP_201_CREATED)
+async def register_admin(
+    admin_in: AdminCreate,
+    session: AsyncSession = Depends(get_session)
+) -> Admin:
     """
     Register a new admin with hashed password.
     """
@@ -20,7 +25,10 @@ async def register_admin(admin_in: AdminCreate, session: AsyncSession = Depends(
     )
     existing_admin = result.scalar_one_or_none()
     if existing_admin:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or email already exists."
+        )
 
     # Create new admin
     new_admin = Admin(
@@ -37,13 +45,18 @@ async def register_admin(admin_in: AdminCreate, session: AsyncSession = Depends(
 
 # === Admin Login ===
 @router.post("/login", response_model=Token)
-async def login_admin(admin_in: AdminLogin, session: AsyncSession = Depends(get_session)):
+async def login_admin(
+    admin_in: AdminLogin,
+    session: AsyncSession = Depends(get_session)
+) -> dict[str, Any]:
     """
     Authenticate admin and return JWT access token.
     """
     result = await session.execute(select(Admin).where(Admin.username == admin_in.username))
     admin = result.scalar_one_or_none()
-    if not admin or not verify_password(admin_in.password, admin.hashed_password):
+
+    # Check existence, password, and active status
+    if not admin or not admin.is_active or not verify_password(admin_in.password, admin.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -51,6 +64,6 @@ async def login_admin(admin_in: AdminLogin, session: AsyncSession = Depends(get_
         )
 
     # Create JWT token
-    token_data = {"sub": str(admin.id), "role": "superadmin" if admin.is_superadmin else "admin"}
+    token_data = {"id": admin.id, "role": "superadmin" if admin.is_superadmin else "admin"}
     access_token = create_access_token(token_data)
     return {"access_token": access_token, "token_type": "bearer"}
