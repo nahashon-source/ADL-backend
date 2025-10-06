@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from backend.app.core.config import settings  # consistent import
+from backend.app.routers import user, admin # import routers
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -28,6 +31,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# === Include routers ===
+app.include_router(user.router, prefix="/api", tags=["Users"])
+app.include_router(admin.router, prefix="/api", tags=["Admins"])
+
+
 # Health check endpoint
 @app.get("/health", tags=["System"])
 async def health_check():
@@ -42,3 +50,12 @@ async def health_check():
         "debug": settings.debug,
         "environment": settings.environment,
     }
+
+
+# Root endpoint
+@app.get("/", tags=["System"])
+async def root():
+    """
+    Root endpoint to confirm API is running.
+    """
+    return {"message": f"Welcome to {settings.project_name} API!"}

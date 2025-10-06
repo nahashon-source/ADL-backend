@@ -1,14 +1,18 @@
+PORT ?= 8010
+
 .PHONY: run stop restart
 
 run:
-	uvicorn backend.app.main:app --reload --port=8080
+	uvicorn backend.app.main:app --reload --port=$(PORT)
 
 stop:
-	@fuser -k 8080/tcp || true
+	@fuser -k $(PORT)/tcp || true
 
 restart: stop run
 
 
-# make run     # start server
-# make stop    # stop server
-# make restart # restart cleanly
+
+
+make run       # runs on default 8010
+make stop      # kills whatever is on 8010
+make restart   # cleans & restarts
