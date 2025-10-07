@@ -8,7 +8,7 @@ from typing import Any
 from backend.app.db.session import get_session
 from backend.app.models.user import User
 from backend.app.schemas.user import UserCreate, UserRead, UserLogin
-from backend.app.schemas.admin import Token
+from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -84,3 +84,24 @@ async def login_user(user_in: UserLogin, session: AsyncSession = Depends(get_ses
     refresh_token = create_access_token(token_data, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+@router.post("/refresh", response_model=TokenRefresh)
+async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
+    """
+    Issue a new access token using a valid refresh token.
+    """
+    from backend.app.core.security import validate_refresh_token
+
+    token_data = validate_refresh_token(token_request.refresh_token)
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    new_access_token = create_access_token(
+        {"id": token_data["id"], "role": token_data["role"]},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    return {"access_token": new_access_token, "token_type": "bearer"}

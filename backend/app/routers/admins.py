@@ -7,7 +7,7 @@ from typing import Any
 
 from backend.app.db.session import get_session
 from backend.app.models.admin import Admin
-from backend.app.schemas.admin import AdminCreate, AdminRead, AdminLogin, Token
+from backend.app.schemas.admin import AdminCreate, AdminRead, AdminLogin, Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 
 router = APIRouter(prefix="/admins", tags=["Admins"])
@@ -72,15 +72,14 @@ async def login_admin(admin_in: AdminLogin, session: AsyncSession = Depends(get_
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
-@router.post("/refresh", response_model=Token)
-async def refresh_token(token: str) -> dict[str, Any]:
+@router.post("/refresh", response_model=TokenRefresh)
+async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
     """
     Issue a new access token using a valid refresh token.
     """
-    # validate_refresh_token should decode & verify claims
     from backend.app.core.security import validate_refresh_token
 
-    token_data = validate_refresh_token(token)
+    token_data = validate_refresh_token(token_request.refresh_token)
     if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
