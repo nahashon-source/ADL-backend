@@ -4,6 +4,7 @@ from sqlmodel import select
 from sqlalchemy.exc import IntegrityError
 from datetime import timedelta
 from typing import Any
+from datetime import datetime
 
 from backend.app.db.session import get_session
 from backend.app.models.user import User
@@ -11,6 +12,7 @@ from backend.app.schemas.user import UserCreate, UserRead, UserLogin
 from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 from backend.app.core.deps import get_current_user
+from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -114,4 +116,52 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
     Get current authenticated user's profile.
     Requires valid JWT token in Authorization header.
     """
+    return current_user
+
+
+@router.put("/me", response_model=UserRead)
+async def update_user_profile(
+    user_update: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> User:
+    """
+    Update current authenticated user's profile.
+    Users can only update their username and email.
+    Requires valid JWT token in Authorization header.
+    """
+    # Check if username is being updated and if it's already taken
+    if user_update.username and user_update.username != current_user.username:
+        result = await session.execute(
+            select(User).where(User.username == user_update.username)
+        )
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already exists"
+            )
+        current_user.username = user_update.username
+    
+    # Check if email is being updated and if it's already taken
+    if user_update.email and user_update.email != current_user.email:
+        result = await session.execute(
+            select(User).where(User.email == user_update.email)
+        )
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists"
+            )
+        current_user.email = user_update.email
+    
+    # Update timestamp
+    current_user.updated_at = datetime.utcnow()
+    
+    # Save changes
+    session.add(current_user)
+    await session.commit()
+    await session.refresh(current_user)
+    
     return current_user

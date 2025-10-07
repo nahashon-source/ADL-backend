@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, StringConstraints
 from typing import Annotated
 from datetime import datetime
+from typing import Optional
 
 
 # ---------- Base ----------
@@ -21,6 +22,10 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+    
+    # ---------- Refresh Token ----------
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 # ---------- Read ----------
@@ -40,3 +45,11 @@ class UserUpdate(BaseModel):
     password: Annotated[str, StringConstraints(min_length=8)] | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None
+    
+# class UserUpdate(SQLModel):
+#     username: Optional[str] = Field(None, min_length=3, max_length=50)
+#     email: Optional[EmailStr] = None
+
+class UserProfileUpdate(BaseModel):
+    username: Annotated[str, StringConstraints(min_length=3, max_length=50)] | None = None
+    email: EmailStr | None = None
