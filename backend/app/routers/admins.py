@@ -9,6 +9,7 @@ from backend.app.db.session import get_session
 from backend.app.models.admin import Admin
 from backend.app.schemas.admin import AdminCreate, AdminRead, AdminLogin, Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
+from backend.app.core.deps import get_current_admin
 
 router = APIRouter(prefix="/admins", tags=["Admins"])
 
@@ -92,3 +93,13 @@ async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
     )
 
     return {"access_token": new_access_token, "token_type": "bearer"}
+
+
+
+@router.get("/me", response_model=AdminRead)
+async def get_current_admin_profile(current_admin: Admin = Depends(get_current_admin)) -> Admin:
+    """
+    Get current authenticated admin's profile.
+    Requires valid JWT token in Authorization header.
+    """
+    return current_admin
