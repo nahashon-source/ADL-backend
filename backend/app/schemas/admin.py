@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator, EmailStr
 
 
 # === Base schema for shared fields ===
@@ -26,8 +26,19 @@ model_config = ConfigDict(from_attributes=True)
 
 # === Schema for admin login ===
 class AdminLogin(BaseModel):
-    username: str
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
     password: str
+
+    @field_validator('username', 'email')
+    @classmethod
+    def check_username_or_email(cls, v, info):
+        # At least one of username or email must be provided
+        if info.field_name == 'email' and not v and not info.data.get('username'):
+            raise ValueError('Either username or email must be provided')
+        if info.field_name == 'username' and not v and not info.data.get('email'):
+            raise ValueError('Either username or email must be provided')
+        return v
 
 # === Token response schema ===
 class Token(BaseModel):

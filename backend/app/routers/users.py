@@ -5,14 +5,17 @@ from sqlalchemy.exc import IntegrityError
 from datetime import timedelta
 from typing import Any
 from datetime import datetime
-
+from typing import Optional
+from sqlalchemy import func
 from backend.app.db.session import get_session
 from backend.app.models.user import User
-from backend.app.schemas.user import UserCreate, UserRead, UserLogin
+# from backend.app.schemas.user import UserCreate, UserRead, UserLogin
 from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 from backend.app.core.deps import get_current_user
-from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate, ChangePasswordRequest
+from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate, ChangePasswordRequest, UserListResponse
+from backend.app.core.deps import get_current_user, get_current_admin
+from backend.app.models.admin import Admin
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -201,3 +204,66 @@ async def change_password(
     await session.commit()
     
     return {"message": "Password changed successfully"}
+
+
+@router.get("/", response_model=UserListResponse)
+async def list_users(
+    page: int = 1,
+    page_size: int = 10,
+    is_active: Optional[bool] = None,
+    current_admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_session)
+) -> dict:
+    """
+    List all users with pagination (Admin only).
+    Requires valid admin JWT token in Authorization header.
+    
+    Query params:
+    - page: Page number (default: 1)
+    - page_size: Items per page (default: 10, max: 100)
+    - is_active: Filter by active status (optional)
+    """
+    # Validate pagination parameters
+    if page < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Page must be >= 1"
+        )
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Page size must be between 1 and 100"
+        )
+    
+    # Build query
+    query = select(User)
+    
+    # Apply filters
+    if is_active is not None:
+        query = query.where(User.is_active == is_active)
+    
+    # Get total count
+    count_query = select(func.count()).select_from(User)
+    if is_active is not None:
+        count_query = count_query.where(User.is_active == is_active)
+    result = await session.execute(count_query)
+    total = result.scalar_one()
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size).order_by(User.id)
+    
+    # Execute query
+    result = await session.execute(query)
+    users = result.scalars().all()
+    
+    # Calculate total pages
+    total_pages = (total + page_size - 1) // page_size
+    
+    return {
+        "users": users,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
