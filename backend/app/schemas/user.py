@@ -16,6 +16,11 @@ class UserCreate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)]
     email: EmailStr
     password: Annotated[str, StringConstraints(min_length=8)]
+    
+    # ---------- Login ----------
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
 
 # ---------- Read ----------

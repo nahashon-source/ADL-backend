@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.config import settings  # consistent import
-from backend.app.routers import user, admin # import routers
+from backend.app.routers import users, admins  # import routers
 
 
 # Initialize FastAPI app
@@ -32,8 +32,8 @@ app.add_middleware(
 )
 
 # === Include routers ===
-app.include_router(user.router, prefix="/api", tags=["Users"])
-app.include_router(admin.router, prefix="/api", tags=["Admins"])
+app.include_router(users.router, prefix="/api", tags=["Users"])
+app.include_router(admins.router, prefix="/api", tags=["Admins"])
 
 
 # Health check endpoint

@@ -1,2 +1,2 @@
-from . import user
-from . import admin
+from . import users
+from . import admins
