@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from typing import Optional
-from pydantic import EmailStr
+from pydantic import EmailStr, ConfigDict
 
 class Admin(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True, description="Primary key")
@@ -29,5 +29,4 @@ class Admin(SQLModel, table=True):
         description="Indicates whether the admin account is active"
     )
 
-    class Config:
-        orm_mode = True  # Allows ORM models to be converted to Pydantic models easily
+    model_config = ConfigDict(from_attributes=True)

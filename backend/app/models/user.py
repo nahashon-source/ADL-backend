@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field, Column, String
-from sqlalchemy import Boolean
+from sqlalchemy import Boolean, DateTime
 from typing import Optional
 from datetime import datetime
 
@@ -34,9 +34,9 @@ class User(SQLModel, table=True):
     # ---------- Timestamps ----------
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
-        sa_column=Column(nullable=False, index=True)
+        sa_column=Column(DateTime, nullable=False, index=True)
     )
     updated_at: datetime = Field(
         default_factory=datetime.utcnow,
-        sa_column=Column(nullable=False, index=True, onupdate=datetime.utcnow)
+        sa_column=Column(DateTime, nullable=False, index=True, onupdate=datetime.utcnow)
     )
