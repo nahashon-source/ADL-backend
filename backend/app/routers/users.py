@@ -12,7 +12,7 @@ from backend.app.schemas.user import UserCreate, UserRead, UserLogin
 from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 from backend.app.core.deps import get_current_user
-from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate
+from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate, ChangePasswordRequest
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -165,3 +165,39 @@ async def update_user_profile(
     await session.refresh(current_user)
     
     return current_user
+
+
+@router.post("/change-password")
+async def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> dict:
+    """
+    Change current authenticated user's password.
+    Requires current password verification.
+    Requires valid JWT token in Authorization header.
+    """
+    # Verify current password
+    if not verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+    
+    # Check new password is different from current
+    if password_data.current_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password"
+        )
+    
+    # Hash and update password
+    current_user.hashed_password = hash_password(password_data.new_password)
+    current_user.updated_at = datetime.utcnow()
+    
+    # Save changes
+    session.add(current_user)
+    await session.commit()
+    
+    return {"message": "Password changed successfully"}

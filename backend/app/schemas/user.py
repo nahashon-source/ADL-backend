@@ -53,3 +53,10 @@ class UserUpdate(BaseModel):
 class UserProfileUpdate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)] | None = None
     email: EmailStr | None = None
+    
+    
+    # ---------- Change Password ----------
+class ChangePasswordRequest(BaseModel):
+    """Schema for changing user password"""
+    current_password: Annotated[str, StringConstraints(min_length=8)]
+    new_password: Annotated[str, StringConstraints(min_length=8)]
