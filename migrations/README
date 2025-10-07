@@ -1,1 +1,323 @@
 Generic single-database configuration.
+
+
+📚 Essential Commands for ADL Backend
+Here's a comprehensive list of commands for the README:
+markdown# ADL Backend - Essential Commands
+
+## 🚀 Quick Start
+
+### 1. Initial Setup
+```bash
+# Clone the repository (if applicable)
+git clone <repository-url>
+cd ADL-backend
+
+# Create Python virtual environment
+python3 -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # Linux/Mac
+# OR
+.venv\Scripts\activate     # Windows
+
+# Install dependencies locally (optional, for IDE support)
+pip install -r requirements.txt
+2. Environment Configuration
+bash# Copy environment template
+cp .env.example .env
+
+# Edit .env with your settings
+nano .env  # or use your preferred editor
+
+# Generate a new SECRET_KEY (optional)
+openssl rand -hex 32
+
+🐳 Docker Commands
+Start Services
+bash# Start all services (database + backend)
+docker compose up -d
+
+# Start and watch logs
+docker compose up
+
+# Start specific service
+docker compose up -d backend
+docker compose up -d postgres
+Stop Services
+bash# Stop all services (keeps data)
+docker compose down
+
+# Stop and remove volumes (deletes database data)
+docker compose down -v
+
+# Stop specific service
+docker compose stop backend
+docker compose stop postgres
+View Logs
+bash# View all logs
+docker compose logs
+
+# Follow logs in real-time
+docker compose logs -f
+
+# View specific service logs
+docker compose logs backend
+docker compose logs postgres
+
+# View last 50 lines
+docker compose logs backend --tail=50
+Check Service Status
+bash# List running containers
+docker compose ps
+
+# Check container health
+docker compose ps
+
+🔄 Rebuild & Restart
+Rebuild After Code Changes
+bash# Stop services
+docker compose down
+
+# Rebuild backend image
+docker compose build backend
+
+# Start services
+docker compose up -d
+
+# Watch logs
+docker compose logs -f backend
+Full Clean Rebuild (Nuclear Option)
+bash# Stop everything and remove volumes
+docker compose down -v
+
+# Remove old image
+docker rmi adl-backend:latest
+
+# Rebuild from scratch (no cache)
+docker compose build --no-cache backend
+
+# Start services
+docker compose up -d
+
+🗄️ Database Commands
+Access PostgreSQL
+bash# Open psql shell
+docker compose exec postgres psql -U adl_user -d adl_db
+
+# Run a single SQL command
+docker compose exec postgres psql -U adl_user -d adl_db -c "SELECT * FROM users;"
+Common Database Queries
+bash# List all tables
+docker compose exec postgres psql -U adl_user -d adl_db -c "\dt"
+
+# View users
+docker compose exec postgres psql -U adl_user -d adl_db -c "SELECT id, username, email, is_active FROM users;"
+
+# View admins
+docker compose exec postgres psql -U adl_user -d adl_db -c "SELECT id, username, email, is_superadmin, is_active FROM admin;"
+
+# Count records
+docker compose exec postgres psql -U adl_user -d adl_db -c "SELECT COUNT(*) FROM users;"
+
+# Delete all users (careful!)
+docker compose exec postgres psql -U adl_user -d adl_db -c "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"
+Database Backup & Restore
+bash# Backup database
+docker compose exec postgres pg_dump -U adl_user adl_db > backup.sql
+
+# Restore database
+docker compose exec -T postgres psql -U adl_user -d adl_db < backup.sql
+
+🔄 Migration Commands
+Run Migrations
+bash# Migrations run automatically on startup
+# But you can run them manually:
+
+docker compose exec backend alembic upgrade head
+
+# Rollback one migration
+docker compose exec backend alembic downgrade -1
+
+# Check current migration version
+docker compose exec backend alembic current
+
+# View migration history
+docker compose exec backend alembic history
+Create New Migration (Local Development)
+bash# Activate virtual environment first
+source .venv/bin/activate
+
+# Generate new migration
+alembic revision --autogenerate -m "description of changes"
+
+# Then rebuild and restart
+docker compose down
+docker compose build backend
+docker compose up -d
+
+🧪 Testing API Endpoints
+Health Check
+bashcurl http://localhost:8006/health
+Register User
+bashcurl -X POST http://localhost:8006/api/users/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "SecurePass123!"
+  }'
+Register Admin
+bashcurl -X POST http://localhost:8006/api/admins/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "email": "admin@example.com",
+    "password": "AdminPass123!",
+    "is_superadmin": true
+  }'
+Login Admin
+bashcurl -X POST http://localhost:8006/api/admins/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "AdminPass123!"
+  }'
+Test with Authentication Token
+bash# First, get a token from login
+TOKEN="your_jwt_token_here"
+
+# Use token in requests
+curl -X GET http://localhost:8006/api/protected-route \
+  -H "Authorization: Bearer $TOKEN"
+
+📊 Monitoring & Debugging
+Check Container Resource Usage
+bashdocker stats
+View Container Details
+bashdocker compose exec backend env
+docker compose exec backend python --version
+docker compose exec backend pip list
+Enter Container Shell
+bash# Backend container
+docker compose exec backend bash
+
+# Postgres container
+docker compose exec postgres bash
+Check Network Connectivity
+bash# Ping postgres from backend
+docker compose exec backend ping postgres
+
+# Check DNS resolution
+docker compose exec backend nslookup postgres
+View Docker Networks
+bashdocker network ls
+docker network inspect adl_network
+
+🔧 Troubleshooting
+Port Already in Use
+bash# Find what's using port 8006
+sudo lsof -i :8006
+
+# Kill the process
+sudo kill -9 <PID>
+
+# Or use a different port
+# Edit .env: BACKEND_PORT=8007
+Container Won't Start
+bash# View detailed logs
+docker compose logs backend --tail=100
+
+# Check container exit code
+docker compose ps -a
+
+# Inspect container
+docker inspect adl_backend
+Database Connection Issues
+bash# Check if postgres is ready
+docker compose exec postgres pg_isready -U adl_user
+
+# Test connection from backend
+docker compose exec backend python -c "from backend.app.db.session import engine; import asyncio; asyncio.run(engine.connect())"
+Reset Everything
+bash# Nuclear reset - removes ALL data
+docker compose down -v
+docker rmi adl-backend:latest
+docker system prune -a
+docker volume prune
+
+# Then start fresh
+docker compose build --no-cache
+docker compose up -d
+
+📱 Access Points
+
+API Base URL: http://localhost:8006
+API Documentation (Swagger): http://localhost:8006/docs
+Alternative API Docs (ReDoc): http://localhost:8006/redoc
+Health Check: http://localhost:8006/health
+PostgreSQL: localhost:5435
+
+Database: adl_db
+User: adl_user
+Password: (from .env)
+
+
+
+
+🎯 Daily Development Workflow
+bash# 1. Start services
+docker compose up -d
+
+# 2. Check logs
+docker compose logs -f backend
+
+# 3. Make code changes
+# Edit files in backend/
+
+# 4. Rebuild and restart
+docker compose down
+docker compose build backend
+docker compose up -d
+
+# 5. Test endpoints
+curl http://localhost:8006/docs
+
+# 6. Check database
+docker compose exec postgres psql -U adl_user -d adl_db -c "SELECT * FROM users;"
+
+# 7. Stop when done
+docker compose down
+
+🔐 Production Commands (Future)
+bash# Build for production
+docker compose -f docker-compose.prod.yml build
+
+# Deploy with production settings
+docker compose -f docker-compose.prod.yml up -d
+
+# View production logs
+docker compose -f docker-compose.prod.yml logs -f
+
+📦 Dependency Management
+bash# Update requirements.txt
+pip freeze > requirements.txt
+
+# Or add a specific package
+echo "new-package>=1.0.0" >> requirements.txt
+
+# Rebuild after adding packages
+docker compose build backend
+
+🧹 Cleanup Commands
+bash# Remove stopped containers
+docker container prune
+
+# Remove unused images
+docker image prune
+
+# Remove unused volumes
+docker volume prune
+
+# Remove everything unused
+docker system prune -a --volumes

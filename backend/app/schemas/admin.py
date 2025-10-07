@@ -1,5 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from pydantic import ConfigDict
+
 
 # === Base schema for shared fields ===
 class AdminBase(BaseModel):
@@ -17,8 +19,10 @@ class AdminRead(AdminBase):
     is_active: bool = True
     is_superadmin: bool = False
 
-    class Config:
-        orm_mode = True
+    # class Config:
+    #     orm_mode = True
+model_config = ConfigDict(from_attributes=True)
+
 
 # === Schema for admin login ===
 class AdminLogin(BaseModel):
