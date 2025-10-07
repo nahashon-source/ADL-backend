@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.config import settings  # consistent import
 from backend.app.routers import users, admins  # import routers
+from backend.app.api.endpoints import test_email  # import test email router
 
 
 # Initialize FastAPI app
@@ -34,6 +35,7 @@ app.add_middleware(
 # === Include routers ===
 app.include_router(users.router, prefix="/api", tags=["Users"])
 app.include_router(admins.router, prefix="/api", tags=["Admins"])
+app.include_router(test_email.router, prefix="/api", tags=["Testing"])  # Test email endpoints
 
 
 # Health check endpoint

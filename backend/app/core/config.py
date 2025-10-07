@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from typing import List, Optional
 
 
@@ -41,13 +41,21 @@ class Settings(BaseSettings):
     # === CORS (stored as comma-separated string) ===
     cors_origins: str = "http://localhost:3000"
 
-    # === SMTP Email Configuration (Optional) ===
+    # === SMTP Email Configuration ===
     smtp_host: Optional[str] = None
-    smtp_port: Optional[int] = None
+    smtp_port: int = 587  # Default to TLS port
     smtp_user: Optional[str] = None
     smtp_password: Optional[SecretStr] = None
     smtp_from_email: Optional[str] = None
-    smtp_from_name: Optional[str] = None
+    smtp_from_name: str = "ADL Backend"  # Default sender name
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    
+    # === Frontend URL for Email Links ===
+    frontend_url: str = "http://localhost:3000"
+    
+    # === Password Reset Token Settings ===
+    reset_token_expire_minutes: int = 60  # 1 hour
     
     # === Server Config (not used directly, just for reference) ===
     backend_port: Optional[int] = None
@@ -67,6 +75,43 @@ class Settings(BaseSettings):
         if isinstance(self.cors_origins, str):
             return [origin.strip() for origin in self.cors_origins.split(",")]
         return [self.cors_origins]
+    
+    @property
+    def email_enabled(self) -> bool:
+        """Check if email service is properly configured."""
+        return all([
+            self.smtp_host,
+            self.smtp_port,
+            self.smtp_user,
+            self.smtp_password,
+            self.smtp_from_email
+        ])
+    
+    @property
+    def smtp_server(self) -> Optional[str]:
+        """Alias for smtp_host for compatibility."""
+        return self.smtp_host
+    
+    @property
+    def smtp_username(self) -> Optional[str]:
+        """Alias for smtp_user for compatibility."""
+        return self.smtp_user
+    
+    @property
+    def from_email(self) -> Optional[str]:
+        """Alias for smtp_from_email for compatibility."""
+        return self.smtp_from_email
+    
+    @property
+    def from_name(self) -> str:
+        """Alias for smtp_from_name for compatibility."""
+        return self.smtp_from_name
+    
+    def get_smtp_password(self) -> Optional[str]:
+        """Get the SMTP password as a plain string."""
+        if self.smtp_password:
+            return self.smtp_password.get_secret_value()
+        return None
 
 
 settings = Settings()
