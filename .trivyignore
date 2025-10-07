@@ -1,0 +1,25 @@
+# Trivy Vulnerability Exceptions
+# ================================
+# This file documents vulnerabilities that are intentionally ignored
+# Review regularly and remove entries when fixes become available
+
+# CVE-2024-23342 - python-ecdsa: Minerva timing attack vulnerability
+# Severity: HIGH
+# Package: ecdsa 0.19.1
+# Status: No fix available as of 2025-10-07
+# 
+# Justification for acceptance:
+# - No patch available from package maintainers
+# - Low exploitability: Requires precise timing measurements and network proximity
+# - Used only as indirect dependency of python-jose for JWT operations
+# - Application does not directly use ECDSA cryptographic operations
+# - Risk accepted pending availability of security patch
+# 
+# Mitigation:
+# - Using python-jose 3.4.0 which includes other security fixes
+# - Monitoring for ecdsa package updates
+# - Will upgrade immediately when fix is released
+#
+# Review date: 2025-10-07
+# Next review: 2025-11-07
+CVE-2024-23342
