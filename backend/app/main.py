@@ -1,21 +1,23 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-import logging
 
 from backend.app.core.config import settings
 from backend.app.routers import users, admins
 from backend.app.api.endpoints import test_email, password_reset
 from backend.app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from backend.app.middleware.security_headers import SecurityHeadersMiddleware
+from backend.app.core.logging.config import setup_logging, get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO if not settings.debug else logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Setup enhanced logging
+setup_logging(
+    log_level=settings.log_level,
+    log_dir=settings.log_dir,
+    enable_json=settings.enable_json_logs,
+    enable_console=settings.enable_console_logs,
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -47,7 +49,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # === CORS Configuration ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,  # Use the parsed list property
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -106,7 +108,9 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info(f"📊 Environment: {settings.environment}")
     logger.info(f"🐛 Debug mode: {settings.debug}")
-    logger.info(f"🔒 Rate limiting: ENABLED")
+    logger.info(f"📝 Log level: {settings.log_level}")
+    logger.info(f"📁 Log directory: {settings.log_dir}")
+    logger.info(f"�� Rate limiting: ENABLED")
     logger.info(f"🛡️  Security headers: ENABLED")
     logger.info(f"🌐 CORS origins: {', '.join(settings.cors_origins_list)}")
     
@@ -142,6 +146,7 @@ async def not_found_handler(request: Request, exc):
     """
     Custom 404 handler
     """
+    logger.warning(f"404 Not Found: {request.url.path} - Method: {request.method}")
     return JSONResponse(
         status_code=404,
         content={
@@ -157,7 +162,7 @@ async def internal_error_handler(request: Request, exc):
     """
     Custom 500 handler
     """
-    logger.error(f"Internal server error on {request.url.path}: {str(exc)}")
+    logger.error(f"Internal server error on {request.url.path}: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={

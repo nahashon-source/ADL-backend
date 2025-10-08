@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     backend_port: Optional[int] = None
     host: Optional[str] = None
 
+    # === Logging Configuration ===
+    log_level: str = "INFO"
+    log_dir: str = "logs"
+    enable_json_logs: bool = False  # Enable in production for structured logs
+    enable_console_logs: bool = True
+
     # === Pydantic v2 Configuration ===
     model_config = SettingsConfigDict(
         env_file=".env",
