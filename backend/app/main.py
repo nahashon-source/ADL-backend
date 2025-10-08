@@ -1,10 +1,21 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from slowapi.errors import RateLimitExceeded
+import logging
 
-from backend.app.core.config import settings  # consistent import
-from backend.app.routers import users, admins  # import routers
-from backend.app.api.endpoints import test_email  # import test email router
+from backend.app.core.config import settings
+from backend.app.routers import users, admins
+from backend.app.api.endpoints import test_email, password_reset
+from backend.app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
+from backend.app.middleware.security_headers import SecurityHeadersMiddleware
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO if not settings.debug else logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -21,43 +32,136 @@ app = FastAPI(
         "url": settings.license_url,
     },
     root_path=settings.root_path,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
-# CORS configuration
+# === Add Rate Limiting ===
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# === Add Security Headers Middleware (FIRST - applies to all responses) ===
+app.add_middleware(SecurityHeadersMiddleware)
+
+# === CORS Configuration ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins_list,  # Use the parsed list property
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# === Include routers ===
+# === Include Routers ===
 app.include_router(users.router, prefix="/api", tags=["Users"])
 app.include_router(admins.router, prefix="/api", tags=["Admins"])
-app.include_router(test_email.router, prefix="/api", tags=["Testing"])  # Test email endpoints
+app.include_router(password_reset.router, prefix="/api/password", tags=["Password Reset"])
+app.include_router(test_email.router, prefix="/api", tags=["Testing"])
 
 
-# Health check endpoint
+# === System Endpoints ===
+
 @app.get("/health", tags=["System"])
 async def health_check():
     """
-    Minimal system health info.
-    Safe for public exposure.
+    Health check endpoint - no rate limit
+    Returns minimal system health info.
     """
     return {
-        "status": "ok",
+        "status": "healthy",
         "project": settings.project_name,
         "version": settings.version,
-        "debug": settings.debug,
         "environment": settings.environment,
+        "email_configured": settings.email_enabled,
     }
 
 
-# Root endpoint
 @app.get("/", tags=["System"])
 async def root():
     """
     Root endpoint to confirm API is running.
+    No rate limit applied to welcome endpoint.
     """
-    return {"message": f"Welcome to {settings.project_name} API!"}
+    return {
+        "message": f"Welcome to {settings.project_name} API!",
+        "version": settings.version,
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "health": "/health",
+    }
+
+
+# === Application Lifecycle Events ===
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Application startup event
+    Log important configuration and system status
+    """
+    logger.info("=" * 60)
+    logger.info(f"🚀 Starting {settings.project_name} v{settings.version}")
+    logger.info("=" * 60)
+    logger.info(f"📊 Environment: {settings.environment}")
+    logger.info(f"🐛 Debug mode: {settings.debug}")
+    logger.info(f"🔒 Rate limiting: ENABLED")
+    logger.info(f"🛡️  Security headers: ENABLED")
+    logger.info(f"🌐 CORS origins: {', '.join(settings.cors_origins_list)}")
+    
+    # Check email configuration
+    if settings.email_enabled:
+        logger.info(f"📧 Email service: CONFIGURED ({settings.smtp_host})")
+    else:
+        logger.warning("⚠️  Email service: NOT CONFIGURED - email features disabled")
+    
+    # Check database
+    logger.info(f"🗄️  Database: PostgreSQL (configured)")
+    
+    logger.info("=" * 60)
+    logger.info("✅ Application started successfully!")
+    logger.info(f"📚 API Documentation: http://localhost:{settings.backend_port or 8006}/docs")
+    logger.info("=" * 60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Application shutdown event
+    """
+    logger.info("=" * 60)
+    logger.info(f"🛑 Shutting down {settings.project_name}")
+    logger.info("=" * 60)
+
+
+# === Custom Exception Handlers ===
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    """
+    Custom 404 handler
+    """
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Not Found",
+            "message": f"The requested resource {request.url.path} was not found",
+            "path": str(request.url.path),
+        }
+    )
+
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    """
+    Custom 500 handler
+    """
+    logger.error(f"Internal server error on {request.url.path}: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please try again later.",
+        }
+    )

@@ -1,33 +1,31 @@
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime, timedelta
+from typing import Optional
 import secrets
-
-from app.core.database import Base
-from app.core.config import settings
+from backend.app.core.config import settings
 
 
-class PasswordResetToken(Base):
+class PasswordResetToken(SQLModel, table=True):
     __tablename__ = "password_reset_tokens"
     
-    id = Column(String, primary_key=True, default=lambda: secrets.token_urlsafe(32))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    token = Column(String, unique=True, nullable=False, index=True)
-    expires_at = Column(DateTime, nullable=False)
-    used = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationship
-    user = relationship("User", backref="reset_tokens")
+    id: Optional[str] = Field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        primary_key=True
+    )
+    user_id: str = Field(foreign_key="users.id", nullable=False)
+    token: str = Field(unique=True, nullable=False, index=True)
+    expires_at: datetime
+    used: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if not self.token:
-            self.token = secrets.token_urlsafe(32)
-        if not self.expires_at:
-            self.expires_at = datetime.utcnow() + timedelta(
+        if 'token' not in kwargs:
+            kwargs['token'] = secrets.token_urlsafe(32)
+        if 'expires_at' not in kwargs:
+            kwargs['expires_at'] = datetime.utcnow() + timedelta(
                 minutes=settings.reset_token_expire_minutes
             )
+        super().__init__(**kwargs)
     
     def is_valid(self) -> bool:
         """Check if token is still valid"""

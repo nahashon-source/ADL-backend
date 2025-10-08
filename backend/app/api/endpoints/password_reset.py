@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 
-from app.core.database import get_db
-from app.models.user import User
-from app.models.password_reset import PasswordResetToken
-from app.services.email_service import email_service
-from app.core.security import get_password_hash
+from backend.app.db.session import get_session as get_db
+from backend.app.models.user import User
+from backend.app.models.password_reset import PasswordResetToken
+from backend.app.services.email_service import email_service
+from backend.app.core.security import hash_password
 
 router = APIRouter()
 
@@ -21,134 +21,88 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
-@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+class TestEmailRequest(BaseModel):
+    to_email: EmailStr
+
+
+@router.post("/forgot-password")
 async def forgot_password(
     request: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """
-    Request password reset - sends email with reset token
-    
-    NOTE: Always returns success message to prevent email enumeration attacks
-    """
-    # Find user by email
+    """Request password reset email"""
     user = db.query(User).filter(User.email == request.email).first()
     
-    # Always return success to prevent email enumeration
-    response_message = "If your email is registered, you will receive a password reset link shortly."
-    
     if not user:
-        return {"message": response_message}
+        # Don't reveal if user exists
+        return {"message": "If the email exists, a reset link will be sent"}
     
-    # Check if user is active
-    if not user.is_active:
-        return {"message": response_message}
-    
-    # Invalidate any existing tokens for this user
-    existing_tokens = db.query(PasswordResetToken).filter(
-        PasswordResetToken.user_id == user.id,
-        PasswordResetToken.used == False
-    ).all()
-    
-    for token in existing_tokens:
-        token.used = True
-    
-    # Create new reset token
-    reset_token = PasswordResetToken(user_id=user.id)
+    # Create reset token
+    reset_token = PasswordResetToken.create_token(user.id)
     db.add(reset_token)
     db.commit()
-    db.refresh(reset_token)
     
     # Send email in background
     background_tasks.add_task(
         email_service.send_password_reset_email,
-        to_email=user.email,
-        reset_token=reset_token.token,
-        user_name=user.full_name or user.email
+        user.email,
+        user.username,
+        reset_token.token
     )
     
-    return {"message": response_message}
+    return {"message": "If the email exists, a reset link will be sent"}
 
 
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@router.post("/reset-password")
 async def reset_password(
     request: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Reset password using token from email
-    """
-    # Find the reset token
+    """Reset password using token"""
     reset_token = db.query(PasswordResetToken).filter(
-        PasswordResetToken.token == request.token
+        PasswordResetToken.token == request.token,
+        PasswordResetToken.is_used == False
     ).first()
     
     if not reset_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token"
+            detail="Invalid or expired token"
         )
     
-    # Check if token is valid
-    if not reset_token.is_valid():
+    if reset_token.is_expired():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token"
+            detail="Token has expired"
         )
     
-    # Get the user
+    # Get user and update password
     user = db.query(User).filter(User.id == reset_token.user_id).first()
-    
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     
-    # Check if user is active
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
-        )
-    
-    # Update password
-    user.hashed_password = get_password_hash(request.new_password)
-    user.updated_at = datetime.utcnow()
-    
-    # Mark token as used
-    reset_token.used = True
-    
+    user.password = hash_password(request.new_password)
+    reset_token.is_used = True
     db.commit()
     
-    return {
-        "message": "Password has been reset successfully. You can now login with your new password."
-    }
+    return {"message": "Password reset successful"}
 
 
-@router.post("/test-email", status_code=status.HTTP_200_OK)
-async def test_email():
-    """
-    Test endpoint to verify email service is working
-    
-    NOTE: Change the to_email to your actual email address
-    """
-    test_result = email_service.send_email(
-        to_email="test@example.com",  # ⚠️ CHANGE THIS TO YOUR EMAIL
-        subject="Test Email from ADL Backend",
-        html_content="""
-        <h1>✅ Test Email</h1>
-        <p>If you're reading this, your email service is working correctly!</p>
-        <p>Your SMTP configuration is properly set up.</p>
-        """,
-        text_content="Test Email - If you're reading this, your email service is working correctly!"
+@router.post("/test-email")
+async def test_email(
+    request: TestEmailRequest,
+    background_tasks: BackgroundTasks
+):
+    """Test email configuration"""
+    background_tasks.add_task(
+        email_service.send_password_reset_email,
+        request.to_email,
+        "Test User",
+        "test-token-123"
     )
     
-    if test_result:
-        return {"message": "Test email sent successfully! Check your inbox."}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send test email. Check your SMTP configuration and logs."
-        )
+    return {"message": "Test email sent"}

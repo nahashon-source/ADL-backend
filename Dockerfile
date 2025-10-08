@@ -2,6 +2,7 @@
 # Stage 1: Builder - Install dependencies
 # ============================================
 FROM python:3.12-slim AS builder
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -33,7 +34,8 @@ FROM python:3.12-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH="/app"
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -9,7 +9,7 @@ from typing import Optional
 from sqlalchemy import func
 from backend.app.db.session import get_session
 from backend.app.models.user import User
-# from backend.app.schemas.user import UserCreate, UserRead, UserLogin
+# from schemas.user import UserCreate, UserRead, UserLogin
 from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
 from backend.app.core.security import hash_password, verify_password, create_access_token
 from backend.app.core.deps import get_current_user
@@ -96,7 +96,7 @@ async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
     """
     Issue a new access token using a valid refresh token.
     """
-    from backend.app.core.security import validate_refresh_token
+    from core.security import validate_refresh_token
 
     token_data = validate_refresh_token(token_request.refresh_token)
     if not token_data:

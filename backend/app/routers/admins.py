@@ -94,7 +94,7 @@ async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
     """
     Issue a new access token using a valid refresh token.
     """
-    from backend.app.core.security import validate_refresh_token
+    from core.security import validate_refresh_token
 
     token_data = validate_refresh_token(token_request.refresh_token)
     if not token_data:

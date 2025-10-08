@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
-from backend.app.services.email import email_service
+from backend.app.services.email_service import email_service
 from backend.app.core.config import settings
 
 router = APIRouter(prefix="/test", tags=["Testing"])
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/test", tags=["Testing"])
 class TestEmailRequest(BaseModel):
     """Request model for sending test email."""
     to_email: EmailStr
-    test_type: str = "welcome"  # Options: "welcome", "password_reset"
+    test_type: str = "welcome"
 
 
 class TestEmailResponse(BaseModel):
@@ -22,21 +22,7 @@ class TestEmailResponse(BaseModel):
 
 @router.post("/send-email", response_model=TestEmailResponse)
 async def send_test_email(request: TestEmailRequest):
-    """
-    Send a test email to verify SMTP configuration.
-    
-    **Test Types:**
-    - `welcome`: Send welcome email template
-    - `password_reset`: Send password reset email template
-    
-    **Example:**
-    ```json
-    {
-        "to_email": "test@example.com",
-        "test_type": "welcome"
-    }
-    ```
-    """
+    """Send a test email to verify SMTP configuration."""
     if not settings.email_enabled:
         return TestEmailResponse(
             success=False,
@@ -84,11 +70,7 @@ async def send_test_email(request: TestEmailRequest):
 
 @router.get("/email-config", response_model=dict)
 async def check_email_config():
-    """
-    Check if email service is properly configured.
-    
-    Returns configuration status without exposing credentials.
-    """
+    """Check if email service is properly configured."""
     return {
         "email_configured": settings.email_enabled,
         "smtp_host": settings.smtp_host if settings.smtp_host else "Not configured",
