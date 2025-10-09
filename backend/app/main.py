@@ -31,7 +31,7 @@ from backend.app.core.exception_handlers import (
     authorization_exception_handler,
     database_exception_handler,
     record_not_found_handler,
-    duplicate_record_handler,  # ← ADD THIS LINE
+    duplicate_record_handler,
     validation_exception_handler,
     not_found_handler,
     method_not_allowed_handler,
@@ -88,7 +88,7 @@ app.add_exception_handler(AuthorizationException, authorization_exception_handle
 app.add_exception_handler(DuplicateRecordException, duplicate_record_handler)
 app.add_exception_handler(RecordNotFoundException, record_not_found_handler)
 app.add_exception_handler(ValidationException, validation_exception_handler)
-app.add_exception_handler(RateLimitException, rate_limit_exception_handler)
+app.add_exception_handler(RateLimitException, rate_limit_exceeded_handler)
 app.add_exception_handler(EmailServiceException, email_service_exception_handler)
 app.add_exception_handler(DatabaseException, database_exception_handler)
 app.add_exception_handler(AppException, app_exception_handler)  # General AppException AFTER specific ones
@@ -118,10 +118,17 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 # Generic catch-all handler (MUST BE LAST!)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-# === Add Security Headers Middleware (FIRST - applies to all responses) ===
+# === MIDDLEWARE REGISTRATION ===
+# Order matters! Middleware is executed in reverse order of registration
+
+# 1. Security Headers (FIRST - applies to all responses)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# === CORS Configuration ===
+# 2. Request ID Tracking (SECOND - generates ID for all requests)
+from backend.app.middleware.request_id import RequestIDMiddleware
+app.add_middleware(RequestIDMiddleware)
+
+# 3. CORS Configuration (THIRD - handles cross-origin requests)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -200,6 +207,37 @@ async def startup_event():
     logger.info("✅ Application started successfully!")
     logger.info(f"📚 API Documentation: http://localhost:{settings.backend_port}/docs")
     logger.info("=" * 60)
+    
+    
+@app.get("/debug/request-id", tags=["Debug"])
+async def debug_request_id(request: Request):
+    """
+    Debug endpoint to verify request ID tracking is working.
+    This endpoint will:
+    1. Return the request ID from request.state
+    2. Return the request ID from logging context
+    3. Generate logs that should include the request ID
+    
+    This helps verify the middleware is working correctly.
+    """
+    from backend.app.core.logging.config import get_request_id
+    
+    # Get request ID from request state
+    request_id_from_state = getattr(request.state, 'request_id', 'NOT FOUND')
+    
+    # Get request ID from logging context
+    request_id_from_context = get_request_id()
+    
+    # Generate a debug log message
+    logger.info(f"Debug endpoint called - both IDs should be in the log above this message")
+    
+    return {
+        "debug": "Request ID Tracking Status",
+        "request_id_from_state": request_id_from_state,
+        "request_id_from_context": request_id_from_context,
+        "middleware_working": request_id_from_state != "NOT FOUND",
+        "logging_context_working": request_id_from_context is not None,
+    }
 
 @app.on_event("shutdown")
 async def shutdown_event():

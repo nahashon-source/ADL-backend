@@ -5,6 +5,27 @@ from pathlib import Path
 from typing import Optional
 import json
 from datetime import datetime
+from contextvars import ContextVar
+
+# ContextVar to store request ID across async contexts
+request_id_var: ContextVar[Optional[str]] = ContextVar('request_id', default=None)
+
+
+class RequestIDFilter(logging.Filter):
+    """
+    Logging filter that adds request_id to all log records
+    """
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Get request ID from context variable
+        request_id = request_id_var.get()
+        
+        # Add to record if available
+        if request_id:
+            record.request_id = request_id
+        elif not hasattr(record, 'request_id'):
+            record.request_id = None
+            
+        return True
 
 
 class JSONFormatter(logging.Formatter):
@@ -22,14 +43,15 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno,
         }
         
+        # Add request_id if present
+        if hasattr(record, "request_id") and record.request_id:
+            log_data["request_id"] = record.request_id
+        
         # Add exception info if present
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
         
-        # Add extra fields
-        if hasattr(record, "request_id"):
-            log_data["request_id"] = record.request_id
-        
+        # Add user_id if present
         if hasattr(record, "user_id"):
             log_data["user_id"] = record.user_id
             
@@ -38,7 +60,7 @@ class JSONFormatter(logging.Formatter):
 
 class ColoredFormatter(logging.Formatter):
     """
-    Colored formatter for console output
+    Colored formatter for console output with request ID support
     """
     COLORS = {
         'DEBUG': '\033[36m',      # Cyan
@@ -53,8 +75,18 @@ class ColoredFormatter(logging.Formatter):
         levelname = record.levelname
         if levelname in self.COLORS:
             record.levelname = f"{self.COLORS[levelname]}{levelname}{self.COLORS['RESET']}"
-        return super().format(record)
-
+        
+        # Add request_id to the message if present
+        original_msg = record.getMessage()
+        if hasattr(record, 'request_id') and record.request_id:
+            record.msg = f"[{record.request_id[:8]}] {original_msg}"
+        
+        formatted = super().format(record)
+        
+        # Restore original message
+        record.msg = original_msg
+        
+        return formatted
 
 def setup_logging(
     log_level: str = "INFO",
@@ -63,7 +95,7 @@ def setup_logging(
     enable_console: bool = True,
 ) -> None:
     """
-    Setup comprehensive logging configuration
+    Setup comprehensive logging configuration with request ID tracking
     
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -83,10 +115,16 @@ def setup_logging(
     # Remove existing handlers
     root_logger.handlers.clear()
     
+    # Create request ID filter instance
+    request_id_filter = RequestIDFilter()
+    
     # === Console Handler (for development) ===
     if enable_console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.DEBUG)
+        
+        # ADD FILTER TO HANDLER (not root logger)
+        console_handler.addFilter(request_id_filter)
         
         if enable_json:
             console_formatter = JSONFormatter()
@@ -110,6 +148,9 @@ def setup_logging(
         )
         file_handler.setLevel(logging.INFO)
         
+        # ADD FILTER TO FILE HANDLER TOO
+        file_handler.addFilter(request_id_filter)
+        
         file_formatter = JSONFormatter() if enable_json else logging.Formatter(
             fmt="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S"
@@ -126,6 +167,7 @@ def setup_logging(
         )
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(file_formatter)
+        error_handler.addFilter(request_id_filter)  # ADD HERE TOO
         root_logger.addHandler(error_handler)
         
         # === File Handler - Access Logs ===
@@ -137,6 +179,7 @@ def setup_logging(
         )
         access_handler.setLevel(logging.INFO)
         access_handler.setFormatter(file_formatter)
+        access_handler.addFilter(request_id_filter)  # ADD HERE TOO
         
         # Create separate logger for access logs
         access_logger = logging.getLogger("uvicorn.access")
@@ -149,7 +192,7 @@ def setup_logging(
     
     # Log startup message
     root_logger.info("=" * 60)
-    root_logger.info("Logging system initialized")
+    root_logger.info("Logging system initialized with request ID tracking")
     root_logger.info(f"Log level: {log_level}")
     root_logger.info(f"Log directory: {log_dir}")
     root_logger.info(f"JSON logging: {enable_json}")
@@ -167,3 +210,23 @@ def get_logger(name: str) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name)
+
+
+def set_request_id(request_id: str) -> None:
+    """
+    Set the request ID for the current context
+    
+    Args:
+        request_id: The unique request identifier
+    """
+    request_id_var.set(request_id)
+
+
+def get_request_id() -> Optional[str]:
+    """
+    Get the current request ID from context
+    
+    Returns:
+        The current request ID or None
+    """
+    return request_id_var.get()

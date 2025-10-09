@@ -18,7 +18,7 @@ from backend.app.core.exceptions import (
     RateLimitException,
     EmailServiceException,
 )
-from backend.app.core.logging.config import get_logger
+from backend.app.core.logging.config import get_logger, get_request_id
 
 logger = get_logger(__name__)
 
@@ -30,7 +30,7 @@ def create_error_response(
     details: any = None,
 ) -> JSONResponse:
     """
-    Create a standardized error response
+    Create a standardized error response with request ID
     
     Args:
         request: FastAPI request object
@@ -40,7 +40,7 @@ def create_error_response(
         details: Additional error details (optional)
     
     Returns:
-        JSONResponse with standardized error format
+        JSONResponse with standardized error format including request_id
     """
     error_response = {
         "error": error_type,
@@ -50,9 +50,10 @@ def create_error_response(
         "path": str(request.url.path),
     }
     
-    # Add request_id if available
-    if hasattr(request.state, "request_id"):
-        error_response["request_id"] = request.state.request_id
+    # Get request_id from either request.state or logging context
+    request_id = getattr(request.state, "request_id", None) or get_request_id()
+    if request_id:
+        error_response["request_id"] = request_id
     
     # Add details if provided
     if details is not None:
@@ -73,10 +74,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
     """
     logger.warning(
         f"{exc.__class__.__name__}: {exc.message} - Path: {request.url.path}",
-        extra={
-            "request_id": getattr(request.state, "request_id", None),
-            "status_code": exc.status_code,
-        }
+        extra={"status_code": exc.status_code}
     )
     
     return create_error_response(
@@ -117,10 +115,7 @@ async def authorization_exception_handler(
     """
     Handle authorization (permission) exceptions
     """
-    logger.warning(
-        f"Authorization denied: {exc.message} - Path: {request.url.path}",
-        extra={"request_id": getattr(request.state, "request_id", None)}
-    )
+    logger.warning(f"Authorization denied: {exc.message} - Path: {request.url.path}")
     
     return create_error_response(
         request=request,
@@ -195,10 +190,7 @@ async def duplicate_record_handler(
     """
     Handle duplicate record exceptions (409 Conflict)
     """
-    logger.warning(
-        f"Duplicate record: {exc.message} - Path: {request.url.path}",
-        extra={"request_id": getattr(request.state, "request_id", None)}
-    )
+    logger.warning(f"Duplicate record: {exc.message} - Path: {request.url.path}")
     
     return create_error_response(
         request=request,
@@ -290,8 +282,7 @@ async def internal_server_error_handler(request: Request, exc: Exception) -> JSO
     """
     logger.error(
         f"Internal server error: {str(exc)} - Path: {request.url.path}",
-        exc_info=True,
-        extra={"request_id": getattr(request.state, "request_id", None)}
+        exc_info=True
     )
     
     return create_error_response(
@@ -311,10 +302,7 @@ async def rate_limit_exception_handler(
     """
     Handle rate limit exceeded exceptions
     """
-    logger.warning(
-        f"Rate limit exceeded - Path: {request.url.path}",
-        extra={"request_id": getattr(request.state, "request_id", None)}
-    )
+    logger.warning(f"Rate limit exceeded - Path: {request.url.path}")
     
     return create_error_response(
         request=request,
@@ -402,8 +390,6 @@ async def timeout_handler(request: Request, exc: Exception) -> JSONResponse:
 # FastAPI HTTPException Handler (catches all FastAPI HTTP exceptions)
 # ============================================================================
 
-from fastapi import HTTPException
-
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """
     Handle FastAPI HTTPException to provide consistent error format
@@ -426,10 +412,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     
     error_type = error_type_map.get(exc.status_code, "HTTPError")
     
-    logger.warning(
-        f"HTTP {exc.status_code}: {exc.detail} - Path: {request.url.path}",
-        extra={"request_id": getattr(request.state, "request_id", None)}
-    )
+    logger.warning(f"HTTP {exc.status_code}: {exc.detail} - Path: {request.url.path}")
     
     return create_error_response(
         request=request,
@@ -450,10 +433,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     logger.error(
         f"Unhandled exception: {exc.__class__.__name__} - {str(exc)} - Path: {request.url.path}",
         exc_info=True,
-        extra={
-            "request_id": getattr(request.state, "request_id", None),
-            "exception_type": exc.__class__.__name__,
-        }
+        extra={"exception_type": exc.__class__.__name__}
     )
     
     return create_error_response(
