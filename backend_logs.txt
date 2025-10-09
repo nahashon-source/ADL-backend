@@ -1,0 +1,150 @@
+[36madl_backend |[0m     |     await self.app(scope, receive, _send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+[36madl_backend |[0m     |     await self.app(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 185, in __call__
+[36madl_backend |[0m     |     with collapse_excgroups():
+[36madl_backend |[0m     |          ^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
+[36madl_backend |[0m     |     self.gen.throw(value)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+[36madl_backend |[0m     |     raise exc
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 187, in __call__
+[36madl_backend |[0m     |     response = await self.dispatch_func(request, call_next)
+[36madl_backend |[0m     |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/app/backend/app/middleware/security_headers.py", line 19, in dispatch
+[36madl_backend |[0m     |     response = await call_next(request)
+[36madl_backend |[0m     |                ^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 163, in call_next
+[36madl_backend |[0m     |     raise app_exc
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 149, in coro
+[36madl_backend |[0m     |     await self.app(scope, receive_or_disconnect, send_no_error)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+[36madl_backend |[0m     |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+[36madl_backend |[0m     |     raise exc
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+[36madl_backend |[0m     |     await app(scope, receive, sender)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+[36madl_backend |[0m     |     await self.middleware_stack(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 735, in app
+[36madl_backend |[0m     |     await route.handle(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 288, in handle
+[36madl_backend |[0m     |     await self.app(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 76, in app
+[36madl_backend |[0m     |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+[36madl_backend |[0m     |     raise exc
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+[36madl_backend |[0m     |     await app(scope, receive, sender)
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 73, in app
+[36madl_backend |[0m     |     response = await f(request)
+[36madl_backend |[0m     |                ^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 301, in app
+[36madl_backend |[0m     |     raw_response = await run_endpoint_function(
+[36madl_backend |[0m     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+[36madl_backend |[0m     |     return await dependant.call(**values)
+[36madl_backend |[0m     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m     |   File "/app/backend/app/routers/users.py", line 99, in refresh_token
+[36madl_backend |[0m     |     from core.security import validate_refresh_token
+[36madl_backend |[0m     | ModuleNotFoundError: No module named 'core'
+[36madl_backend |[0m     +------------------------------------
+[36madl_backend |[0m 
+[36madl_backend |[0m During handling of the above exception, another exception occurred:
+[36madl_backend |[0m 
+[36madl_backend |[0m Traceback (most recent call last):
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 401, in run_asgi
+[36madl_backend |[0m     result = await app(  # type: ignore[func-returns-value]
+[36madl_backend |[0m              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 70, in __call__
+[36madl_backend |[0m     return await self.app(scope, receive, send)
+[36madl_backend |[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/fastapi/applications.py", line 1054, in __call__
+[36madl_backend |[0m     await super().__call__(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/applications.py", line 113, in __call__
+[36madl_backend |[0m     await self.middleware_stack(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 187, in __call__
+[36madl_backend |[0m     raise exc
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 165, in __call__
+[36madl_backend |[0m     await self.app(scope, receive, _send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+[36madl_backend |[0m     await self.app(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 185, in __call__
+[36madl_backend |[0m     with collapse_excgroups():
+[36madl_backend |[0m          ^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
+[36madl_backend |[0m     self.gen.throw(value)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/_utils.py", line 82, in collapse_excgroups
+[36madl_backend |[0m     raise exc
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 187, in __call__
+[36madl_backend |[0m     response = await self.dispatch_func(request, call_next)
+[36madl_backend |[0m                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/app/backend/app/middleware/security_headers.py", line 19, in dispatch
+[36madl_backend |[0m     response = await call_next(request)
+[36madl_backend |[0m                ^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 163, in call_next
+[36madl_backend |[0m     raise app_exc
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 149, in coro
+[36madl_backend |[0m     await self.app(scope, receive_or_disconnect, send_no_error)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+[36madl_backend |[0m     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+[36madl_backend |[0m     raise exc
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+[36madl_backend |[0m     await app(scope, receive, sender)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 715, in __call__
+[36madl_backend |[0m     await self.middleware_stack(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 735, in app
+[36madl_backend |[0m     await route.handle(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 288, in handle
+[36madl_backend |[0m     await self.app(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 76, in app
+[36madl_backend |[0m     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+[36madl_backend |[0m     raise exc
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+[36madl_backend |[0m     await app(scope, receive, sender)
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 73, in app
+[36madl_backend |[0m     response = await f(request)
+[36madl_backend |[0m                ^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 301, in app
+[36madl_backend |[0m     raw_response = await run_endpoint_function(
+[36madl_backend |[0m                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+[36madl_backend |[0m     return await dependant.call(**values)
+[36madl_backend |[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[36madl_backend |[0m   File "/app/backend/app/routers/users.py", line 99, in refresh_token
+[36madl_backend |[0m     from core.security import validate_refresh_token
+[36madl_backend |[0m ModuleNotFoundError: No module named 'core'
+[36madl_backend |[0m 2025-10-08 13:36:10 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:40228 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m 2025-10-08 13:36:10 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:40240 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m 2025-10-08 13:36:10 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:40244 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m 2025-10-08 13:36:10 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:40260 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m 2025-10-08 13:36:10 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:40270 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     127.0.0.1:50762 - "GET /health HTTP/1.1" 200 OK
+[36madl_backend |[0m INFO:     127.0.0.1:39992 - "GET /health HTTP/1.1" 200 OK
+[36madl_backend |[0m INFO:     127.0.0.1:55202 - "GET /health HTTP/1.1" 200 OK
+[36madl_backend |[0m INFO:     172.20.0.4:38496 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m 2025-10-08 13:37:32 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:38506 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     172.20.0.4:38514 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m 2025-10-08 13:37:32 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:38528 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     172.20.0.4:38540 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m 2025-10-08 13:37:32 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:38552 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     172.20.0.4:38556 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m 2025-10-08 13:37:32 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:38566 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     172.20.0.4:38578 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m 2025-10-08 13:37:32 - [33mWARNING[0m - backend.app.core.exception_handlers - 405 Method Not Allowed: HEAD /health
+[36madl_backend |[0m INFO:     172.20.0.4:38582 - "HEAD /health HTTP/1.0" 405 Method Not Allowed
+[36madl_backend |[0m INFO:     172.20.0.4:40410 - "GET /health HTTP/1.0" 200 OK
+[36madl_backend |[0m INFO:     127.0.0.1:51232 - "GET /health HTTP/1.1" 200 OK
+[36madl_backend |[0m 2025-10-08 13:38:04 - [33mWARNING[0m - backend.app.core.exception_handlers - Validation error: 1 field(s) invalid - Path: /api/password/test-email
+[36madl_backend |[0m INFO:     172.20.0.4:42234 - "POST /api/password/test-email HTTP/1.1" 422 Unprocessable Entity

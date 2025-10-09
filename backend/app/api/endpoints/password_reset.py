@@ -8,6 +8,8 @@ from backend.app.models.user import User
 from backend.app.models.password_reset import PasswordResetToken
 from backend.app.services.email_service import email_service
 from backend.app.core.security import hash_password
+from sqlalchemy import select
+
 
 router = APIRouter()
 
@@ -32,8 +34,8 @@ async def forgot_password(
     db: Session = Depends(get_db)
 ):
     """Request password reset email"""
-    user = db.query(User).filter(User.email == request.email).first()
-    
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalar_one_or_none()    
     if not user:
         # Don't reveal if user exists
         return {"message": "If the email exists, a reset link will be sent"}

@@ -1,48 +1,75 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from sqlalchemy.exc import IntegrityError
-from datetime import timedelta
-from typing import Any
-from datetime import datetime
-from typing import Optional
+from datetime import timedelta, datetime
+from typing import Any, Optional
 from sqlalchemy import func
+
 from backend.app.db.session import get_session
 from backend.app.models.user import User
-# from schemas.user import UserCreate, UserRead, UserLogin
-from backend.app.schemas.admin import Token, TokenRefresh, RefreshTokenRequest
+from backend.app.schemas.user import (
+    UserCreate, UserRead, UserLogin, RefreshTokenRequest,
+    UserProfileUpdate, ChangePasswordRequest, UserListResponse
+)
 from backend.app.core.security import hash_password, verify_password, create_access_token
-from backend.app.core.deps import get_current_user
-from backend.app.schemas.user import UserCreate, UserRead, UserLogin, RefreshTokenRequest, UserProfileUpdate, ChangePasswordRequest, UserListResponse
 from backend.app.core.deps import get_current_user, get_current_admin
 from backend.app.models.admin import Admin
+from backend.app.schemas.admin import Token, TokenRefresh
+from backend.app.core.exceptions import (
+    AuthenticationException,
+    DuplicateRecordException,
+    EmailAlreadyExistsException,
+    UsernameAlreadyExistsException,
+    BusinessLogicException,
+)
+from backend.app.core.logging.config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register_user(user_in: UserCreate, session: AsyncSession = Depends(get_session)) -> UserRead:
+async def register_user(
+    user_in: UserCreate,
+    session: AsyncSession = Depends(get_session)
+) -> UserRead:
     """
     Register a new user with hashed password.
-    Ensures unique username/email.
+    Ensures unique username and email.
+    
+    Args:
+        user_in: UserCreate schema with username, email, password
+        session: Database session
+    
+    Returns:
+        UserRead: Created user object
+    
+    Raises:
+        UsernameAlreadyExistsException: If username already exists
+        EmailAlreadyExistsException: If email already registered
     """
+    logger.info(f"Registering new user: {user_in.username}")
 
-    # ✅ Check if username or email already exists before insert
+    # Check if username or email already exists
     query = select(User).where(
         (User.username == user_in.username) | (User.email == user_in.email)
     )
     existing_user = (await session.execute(query)).scalar_one_or_none()
 
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username or email already exists."
-        )
+        if existing_user.username == user_in.username:
+            logger.warning(f"Registration failed: Username '{user_in.username}' already exists")
+            raise UsernameAlreadyExistsException(user_in.username)
+        else:
+            logger.warning(f"Registration failed: Email '{user_in.email}' already exists")
+            raise EmailAlreadyExistsException(user_in.email)
 
-    # ✅ Hash password before saving
+    # Hash password and create new user
     new_user = User(
         username=user_in.username,
         email=user_in.email,
@@ -53,72 +80,113 @@ async def register_user(user_in: UserCreate, session: AsyncSession = Depends(get
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)
+        logger.info(f"✅ User '{user_in.username}' registered successfully (ID: {new_user.id})")
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Could not create user due to integrity constraint."
-        )
+        logger.error(f"Database integrity error during user registration: {user_in.username}")
+        raise DuplicateRecordException(resource="User")
     except Exception as e:
         await session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while creating the user."
-        )
+        logger.error(f"Unexpected error during user registration: {str(e)}", exc_info=True)
+        raise
 
     return new_user
 
 
 @router.post("/login", response_model=Token)
-async def login_user(user_in: UserLogin, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+async def login_user(
+    user_in: UserLogin,
+    session: AsyncSession = Depends(get_session)
+) -> dict[str, Any]:
     """
     Authenticate user and return JWT access + refresh tokens.
+    
+    Args:
+        user_in: UserLogin schema with username and password
+        session: Database session
+    
+    Returns:
+        dict with access_token, refresh_token, and token_type
+    
+    Raises:
+        AuthenticationException: If credentials invalid or user inactive
     """
-    result = await session.execute(select(User).where(User.username == user_in.username))
+    logger.info(f"Login attempt for user: {user_in.username}")
+
+    result = await session.execute(
+        select(User).where(User.username == user_in.username)
+    )
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active or not verify_password(user_in.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        logger.warning(f"Login failed for user: {user_in.username}")
+        raise AuthenticationException("Invalid username or password")
 
     # Generate JWT tokens
     token_data = {"id": user.id, "role": "superuser" if user.is_superuser else "user"}
-    access_token = create_access_token(token_data, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    refresh_token = create_access_token(token_data, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+    access_token = create_access_token(
+        token_data,
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    refresh_token = create_access_token(
+        token_data,
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    )
 
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    logger.info(f"✅ User '{user_in.username}' logged in successfully")
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
 
 @router.post("/refresh", response_model=TokenRefresh)
 async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
     """
     Issue a new access token using a valid refresh token.
+    
+    Args:
+        token_request: RefreshTokenRequest with refresh_token
+    
+    Returns:
+        dict with new access_token and token_type
+    
+    Raises:
+        AuthenticationException: If refresh token invalid or expired
     """
-    from core.security import validate_refresh_token
+    from backend.app.core.security import validate_refresh_token
+
+    logger.info("Token refresh requested")
 
     token_data = validate_refresh_token(token_request.refresh_token)
     if not token_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
+        logger.warning("Token refresh failed: Invalid or expired refresh token")
+        raise AuthenticationException("Invalid or expired refresh token")
 
     new_access_token = create_access_token(
         {"id": token_data["id"], "role": token_data["role"]},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
+    logger.info("✅ Token refreshed successfully")
     return {"access_token": new_access_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=UserRead)
-async def get_current_user_profile(current_user: User = Depends(get_current_user)) -> User:
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
+) -> User:
     """
     Get current authenticated user's profile.
-    Requires valid JWT token in Authorization header.
+    
+    Returns:
+        User: Current user object with all profile information
+    
+    Requires:
+        Valid JWT token in Authorization header
     """
+    logger.info(f"Fetching profile for user: {current_user.username}")
     return current_user
 
 
@@ -131,42 +199,57 @@ async def update_user_profile(
     """
     Update current authenticated user's profile.
     Users can only update their username and email.
-    Requires valid JWT token in Authorization header.
+    
+    Args:
+        user_update: UserProfileUpdate with username and/or email
+        current_user: Current authenticated user
+        session: Database session
+    
+    Returns:
+        User: Updated user object
+    
+    Raises:
+        UsernameAlreadyExistsException: If new username already taken
+        EmailAlreadyExistsException: If new email already registered
+    
+    Requires:
+        Valid JWT token in Authorization header
     """
-    # Check if username is being updated and if it's already taken
+    logger.info(f"Updating profile for user: {current_user.username}")
+
+    # Check if username is being updated
     if user_update.username and user_update.username != current_user.username:
         result = await session.execute(
             select(User).where(User.username == user_update.username)
         )
         existing_user = result.scalar_one_or_none()
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists"
-            )
+            logger.warning(f"Profile update failed: Username '{user_update.username}' already exists")
+            raise UsernameAlreadyExistsException(user_update.username)
         current_user.username = user_update.username
-    
-    # Check if email is being updated and if it's already taken
+        logger.info(f"Username updated to: {user_update.username}")
+
+    # Check if email is being updated
     if user_update.email and user_update.email != current_user.email:
         result = await session.execute(
             select(User).where(User.email == user_update.email)
         )
         existing_user = result.scalar_one_or_none()
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists"
-            )
+            logger.warning(f"Profile update failed: Email '{user_update.email}' already exists")
+            raise EmailAlreadyExistsException(user_update.email)
         current_user.email = user_update.email
-    
+        logger.info(f"Email updated to: {user_update.email}")
+
     # Update timestamp
     current_user.updated_at = datetime.utcnow()
-    
+
     # Save changes
     session.add(current_user)
     await session.commit()
     await session.refresh(current_user)
-    
+
+    logger.info(f"✅ Profile updated for user: {current_user.username}")
     return current_user
 
 
@@ -178,31 +261,45 @@ async def change_password(
 ) -> dict:
     """
     Change current authenticated user's password.
-    Requires current password verification.
-    Requires valid JWT token in Authorization header.
+    
+    Args:
+        password_data: ChangePasswordRequest with current and new passwords
+        current_user: Current authenticated user
+        session: Database session
+    
+    Returns:
+        dict: Success message
+    
+    Raises:
+        AuthenticationException: If current password incorrect
+        BusinessLogicException: If new password matches current password
+    
+    Requires:
+        Valid JWT token in Authorization header
     """
+    logger.info(f"Password change requested for user: {current_user.username}")
+
     # Verify current password
     if not verify_password(password_data.current_password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect"
-        )
-    
+        logger.warning(f"Password change failed: Incorrect current password for {current_user.username}")
+        raise AuthenticationException("Current password is incorrect")
+
     # Check new password is different from current
     if password_data.current_password == password_data.new_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must be different from current password"
+        logger.warning(f"Password change failed: New password same as current for {current_user.username}")
+        raise BusinessLogicException(
+            message="New password must be different from current password"
         )
-    
+
     # Hash and update password
     current_user.hashed_password = hash_password(password_data.new_password)
     current_user.updated_at = datetime.utcnow()
-    
+
     # Save changes
     session.add(current_user)
     await session.commit()
-    
+
+    logger.info(f"✅ Password changed successfully for user: {current_user.username}")
     return {"message": "Password changed successfully"}
 
 
@@ -215,51 +312,61 @@ async def list_users(
     session: AsyncSession = Depends(get_session)
 ) -> dict:
     """
-    List all users with pagination (Admin only).
-    Requires valid admin JWT token in Authorization header.
+    List all users with pagination and optional filtering (Admin only).
     
-    Query params:
-    - page: Page number (default: 1)
-    - page_size: Items per page (default: 10, max: 100)
-    - is_active: Filter by active status (optional)
+    Args:
+        page: Page number (default: 1, must be >= 1)
+        page_size: Items per page (default: 10, max: 100)
+        is_active: Filter by active status (optional: true/false)
+        current_admin: Current authenticated admin
+        session: Database session
+    
+    Returns:
+        dict: Paginated response with users, total count, and metadata
+    
+    Requires:
+        Valid admin JWT token in Authorization header
     """
+    logger.info(f"Admin listing users - page: {page}, page_size: {page_size}, is_active: {is_active}")
+
     # Validate pagination parameters
     if page < 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Page must be >= 1"
+        logger.warning(f"Invalid page number: {page}")
+        raise BusinessLogicException(
+            message="Page must be >= 1"
         )
     if page_size < 1 or page_size > 100:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Page size must be between 1 and 100"
+        logger.warning(f"Invalid page size: {page_size}")
+        raise BusinessLogicException(
+            message="Page size must be between 1 and 100"
         )
-    
+
     # Build query
     query = select(User)
-    
+
     # Apply filters
     if is_active is not None:
         query = query.where(User.is_active == is_active)
-    
+
     # Get total count
     count_query = select(func.count()).select_from(User)
     if is_active is not None:
         count_query = count_query.where(User.is_active == is_active)
     result = await session.execute(count_query)
     total = result.scalar_one()
-    
+
     # Apply pagination
     offset = (page - 1) * page_size
     query = query.offset(offset).limit(page_size).order_by(User.id)
-    
+
     # Execute query
     result = await session.execute(query)
     users = result.scalars().all()
-    
+
     # Calculate total pages
     total_pages = (total + page_size - 1) // page_size
-    
+
+    logger.info(f"✅ Retrieved {len(users)} users (total: {total})")
     return {
         "users": users,
         "total": total,

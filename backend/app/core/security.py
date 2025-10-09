@@ -41,6 +41,8 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+from backend.app.core.exceptions import InvalidTokenException
+
 def decode_access_token(token: str) -> Dict[str, Any]:
     """
     Decode a JWT token and return the payload.
@@ -49,11 +51,7 @@ def decode_access_token(token: str) -> Dict[str, Any]:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials or token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise InvalidTokenException("Could not validate credentials or token has expired")
 
 
 def validate_refresh_token(token: str) -> Optional[Dict[str, Any]]:
