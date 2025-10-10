@@ -9,7 +9,8 @@ class Admin(SQLModel, table=True):
     Admin model for database table
     """
     __tablename__ = "admins"
-
+    __table_args__ = {"extend_existing": True}
+    
     # ---------- Primary Key ----------
     id: Optional[int] = Field(
         default=None, 
@@ -17,7 +18,7 @@ class Admin(SQLModel, table=True):
         index=True,
         description="Primary key"
     )
-
+    
     # ---------- Identity ----------
     username: str = Field(
         sa_column=Column(String(50), unique=True, index=True, nullable=False),
@@ -31,7 +32,14 @@ class Admin(SQLModel, table=True):
         sa_column=Column(String(255), nullable=False),
         description="Hashed password for secure authentication"
     )
-
+    
+    # ---------- Profile ----------
+    full_name: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+        description="Admin full name"
+    )
+    
     # ---------- Flags ----------
     is_active: bool = Field(
         default=True,
@@ -43,17 +51,19 @@ class Admin(SQLModel, table=True):
         sa_column=Column(Boolean, nullable=False, server_default="0"),
         description="Indicates full access privileges"
     )
-
+    
     # ---------- Timestamps ----------
+    # IMPORTANT: timezone=True tells SQLAlchemy to convert timezone-aware datetimes
+    # to naive (remove timezone) when storing in TIMESTAMP WITHOUT TIME ZONE columns
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(DateTime, nullable=False, index=True),
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
         description="Timestamp when admin was created"
     )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(
-            DateTime, 
+            DateTime(timezone=True), 
             nullable=False, 
             index=True, 
             onupdate=lambda: datetime.now(timezone.utc)
