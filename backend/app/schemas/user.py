@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, StringConstraints
+
+from pydantic import BaseModel, EmailStr, StringConstraints, ConfigDict
 from typing import Annotated
 from datetime import datetime
 from typing import Optional
@@ -17,13 +18,15 @@ class UserCreate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)]
     email: EmailStr
     password: Annotated[str, StringConstraints(min_length=8)]
-    
-    # ---------- Login ----------
+
+
+# ---------- Login ----------
 class UserLogin(BaseModel):
     username: str
     password: str
-    
-    # ---------- Refresh Token ----------
+
+
+# ---------- Refresh Token ----------
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
@@ -34,8 +37,8 @@ class UserRead(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True  # replaces orm_mode in Pydantic v2
+    # ✅ Fixed: Use model_config instead of class Config
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Update ----------
@@ -45,23 +48,21 @@ class UserUpdate(BaseModel):
     password: Annotated[str, StringConstraints(min_length=8)] | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None
-    
-# class UserUpdate(SQLModel):
-#     username: Optional[str] = Field(None, min_length=3, max_length=50)
-#     email: Optional[EmailStr] = None
+
 
 class UserProfileUpdate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)] | None = None
     email: EmailStr | None = None
-    
-    
-    # ---------- Change Password ----------
+
+
+# ---------- Change Password ----------
 class ChangePasswordRequest(BaseModel):
     """Schema for changing user password"""
     current_password: Annotated[str, StringConstraints(min_length=8)]
     new_password: Annotated[str, StringConstraints(min_length=8)]
-    
-    # ---------- User List (Paginated) ----------
+
+
+# ---------- User List (Paginated) ----------
 class UserListResponse(BaseModel):
     """Schema for paginated user list response"""
     users: list[UserRead]

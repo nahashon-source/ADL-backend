@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from jose import JWTError
-from datetime import datetime
+from datetime import datetime, timezone  # ✅ Added timezone
 from typing import Union
 from fastapi import Request, status, HTTPException
 
@@ -46,7 +46,7 @@ def create_error_response(
         "error": error_type,
         "message": message,
         "status_code": status_code,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),  # ✅ Fixed: timezone-aware
         "path": str(request.url.path),
     }
     

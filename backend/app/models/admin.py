@@ -1,32 +1,62 @@
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Column, String
+from sqlalchemy import Boolean, DateTime
 from typing import Optional
-from pydantic import EmailStr, ConfigDict
+from datetime import datetime, timezone
+
 
 class Admin(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True, description="Primary key")
-    username: str = Field(
+    """
+    Admin model for database table
+    """
+    __tablename__ = "admins"
+
+    # ---------- Primary Key ----------
+    id: Optional[int] = Field(
+        default=None, 
+        primary_key=True, 
         index=True,
-        unique=True,
-        nullable=False,
+        description="Primary key"
+    )
+
+    # ---------- Identity ----------
+    username: str = Field(
+        sa_column=Column(String(50), unique=True, index=True, nullable=False),
         description="Unique admin username"
     )
-    email: EmailStr = Field(
-        index=True,
-        unique=True,
-        nullable=False,
+    email: str = Field(
+        sa_column=Column(String(255), unique=True, index=True, nullable=False),
         description="Admin email address"
     )
     hashed_password: str = Field(
-        nullable=False,
+        sa_column=Column(String(255), nullable=False),
         description="Hashed password for secure authentication"
+    )
+
+    # ---------- Flags ----------
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default="1"),
+        description="Indicates whether the admin account is active"
     )
     is_superadmin: bool = Field(
         default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="0"),
         description="Indicates full access privileges"
     )
-    is_active: bool = Field(
-        default=True,
-        description="Indicates whether the admin account is active"
-    )
 
-    model_config = ConfigDict(from_attributes=True)
+    # ---------- Timestamps ----------
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime, nullable=False, index=True),
+        description="Timestamp when admin was created"
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(
+            DateTime, 
+            nullable=False, 
+            index=True, 
+            onupdate=lambda: datetime.now(timezone.utc)
+        ),
+        description="Timestamp when admin was last updated"
+    )

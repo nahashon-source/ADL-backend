@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Column, String
 from sqlalchemy import Boolean, DateTime
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone  # ✅ Added timezone
 
 
 class User(SQLModel, table=True):
@@ -32,11 +32,17 @@ class User(SQLModel, table=True):
     )
 
     # ---------- Timestamps ----------
+    # ✅ Fixed: Use timezone-aware datetime
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),  # ✅ Fixed
         sa_column=Column(DateTime, nullable=False, index=True)
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        sa_column=Column(DateTime, nullable=False, index=True, onupdate=datetime.utcnow)
+        default_factory=lambda: datetime.now(timezone.utc),  # ✅ Fixed
+        sa_column=Column(
+            DateTime, 
+            nullable=False, 
+            index=True, 
+            onupdate=lambda: datetime.now(timezone.utc)  # ✅ Fixed
+        )
     )

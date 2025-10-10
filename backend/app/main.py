@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -55,7 +56,50 @@ setup_logging(
 )
 logger = get_logger(__name__)
 
-# Initialize FastAPI app
+
+# === Application Lifecycle Events ===
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events.
+    Replaces deprecated @app.on_event("startup") and @app.on_event("shutdown").
+    """
+    # ============= STARTUP =============
+    # Run startup checks first
+    await perform_startup_checks(fail_fast=False)  # Set to True in production
+    
+    logger.info("=" * 60)
+    logger.info(f"🚀 Starting {settings.project_name} v{settings.version}")
+    logger.info("=" * 60)
+    logger.info(f"📊 Environment: {settings.environment}")
+    logger.info(f"🐛 Debug mode: {settings.debug}")
+    logger.info(f"📝 Log level: {settings.log_level}")
+    logger.info(f"📁 Log directory: {settings.log_dir}")
+    logger.info(f"📈 Rate limiting: ENABLED")
+    logger.info(f"🛡️  Security headers: ENABLED")
+    logger.info(f"🌐 CORS origins: {', '.join(settings.cors_origins_list)}")
+    
+    # Check email configuration
+    if settings.email_enabled:
+        logger.info(f"📧 Email service: CONFIGURED ({settings.smtp_host})")
+    else:
+        logger.info("📧 Email service: NOT CONFIGURED")
+    
+    logger.info("🗄️  Database: PostgreSQL (configured)")
+    logger.info("=" * 60)
+    logger.info("✅ Application started successfully!")
+    logger.info(f"📚 API Documentation: http://localhost:{settings.backend_port}/docs")
+    logger.info("=" * 60)
+    
+    yield  # Application runs here
+    
+    # ============= SHUTDOWN =============
+    logger.info("=" * 60)
+    logger.info(f"🛑 Shutting down {settings.project_name}")
+    logger.info("=" * 60)
+
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title=settings.project_name,
     debug=settings.debug,
@@ -73,6 +117,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,  # ✅ Use lifespan instead of deprecated on_event
 )
 
 # === Add Rate Limiting ===
@@ -174,41 +219,6 @@ async def root():
         "health": "/health",
     }
 
-# === Application Lifecycle Events ===
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Application startup event
-    Perform startup checks and log important configuration
-    """
-    # Run startup checks first
-    await perform_startup_checks(fail_fast=False)  # Set to True in production
-    
-    logger.info("=" * 60)
-    logger.info(f"🚀 Starting {settings.project_name} v{settings.version}")
-    logger.info("=" * 60)
-    logger.info(f"📊 Environment: {settings.environment}")
-    logger.info(f"🐛 Debug mode: {settings.debug}")
-    logger.info(f"📝 Log level: {settings.log_level}")
-    logger.info(f"📁 Log directory: {settings.log_dir}")
-    logger.info(f"📈 Rate limiting: ENABLED")
-    logger.info(f"🛡️  Security headers: ENABLED")
-    logger.info(f"🌐 CORS origins: {', '.join(settings.cors_origins_list)}")
-    
-    # Check email configuration
-    if settings.email_enabled:
-        logger.info(f"📧 Email service: CONFIGURED ({settings.smtp_host})")
-    else:
-        logger.info("📧 Email service: NOT CONFIGURED")
-    
-    logger.info("🗄️  Database: PostgreSQL (configured)")
-    logger.info("=" * 60)
-    logger.info("✅ Application started successfully!")
-    logger.info(f"📚 API Documentation: http://localhost:{settings.backend_port}/docs")
-    logger.info("=" * 60)
-    
-    
 @app.get("/debug/request-id", tags=["Debug"])
 async def debug_request_id(request: Request):
     """
@@ -238,12 +248,3 @@ async def debug_request_id(request: Request):
         "middleware_working": request_id_from_state != "NOT FOUND",
         "logging_context_working": request_id_from_context is not None,
     }
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Application shutdown event
-    """
-    logger.info("=" * 60)
-    logger.info(f"🛑 Shutting down {settings.project_name}")
-    logger.info("=" * 60)
