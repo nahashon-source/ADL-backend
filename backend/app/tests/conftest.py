@@ -30,6 +30,7 @@ from sqlalchemy.pool import NullPool
 
 # Import your app
 from backend.app.main import app
+from backend.app.db.session import get_session
 from sqlmodel import SQLModel
 from backend.app.models.user import User
 from backend.app.models.admin import Admin
@@ -207,10 +208,22 @@ def client() -> TestClient:
 
 
 @pytest.fixture
-async def async_client() -> AsyncGenerator:
-    """Create an asynchronous test client for the app."""
+async def async_client(db_session: AsyncSession) -> AsyncGenerator:
+    """
+    Create an asynchronous test client with overridden database session.
+    This ensures tests use the test database instead of production database.
+    """
+    # Override the get_session dependency to use test database
+    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        yield db_session
+    
+    app.dependency_overrides[get_session] = override_get_session
+    
     async with AsyncClient(app=app, base_url="http://test") as ac:
         yield ac
+    
+    # Clean up override after test
+    app.dependency_overrides.clear()
 
 
 # ==================== JWT TOKEN FIXTURES ====================

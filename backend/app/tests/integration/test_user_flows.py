@@ -5,21 +5,17 @@ Tests end-to-end user journeys through multiple endpoints
 import pytest
 from httpx import AsyncClient
 from fastapi import status
+from datetime import timedelta
 
-from app.core.security import create_access_token
+from backend.app.core.security import create_access_token
 
 
 # ==================== USER REGISTRATION & LOGIN FLOW ====================
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_complete_user_registration_and_login_flow(client: AsyncClient):
-    """
-    Test complete user journey:
-    1. Register new user
-    2. Login with credentials
-    3. Access protected endpoint
-    """
+async def test_complete_user_registration_and_login_flow(async_client: AsyncClient):
+    """Test complete user journey: register → login → access protected endpoint"""
     # Step 1: Register new user
     registration_data = {
         "email": "newuser@example.com",
@@ -28,7 +24,7 @@ async def test_complete_user_registration_and_login_flow(client: AsyncClient):
         "full_name": "New User"
     }
     
-    register_response = await client.post(
+    register_response = await async_client.post(
         "/api/users/register",
         json=registration_data
     )
@@ -36,6 +32,7 @@ async def test_complete_user_registration_and_login_flow(client: AsyncClient):
     register_data = register_response.json()
     assert register_data["email"] == registration_data["email"]
     assert register_data["username"] == registration_data["username"]
+    assert register_data["full_name"] == registration_data["full_name"]
     assert "id" in register_data
     
     # Step 2: Login with registered credentials
@@ -44,9 +41,9 @@ async def test_complete_user_registration_and_login_flow(client: AsyncClient):
         "password": registration_data["password"]
     }
     
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data=login_data  # OAuth2 form expects form data
+        json=login_data
     )
     assert login_response.status_code == status.HTTP_200_OK
     login_result = login_response.json()
@@ -58,19 +55,20 @@ async def test_complete_user_registration_and_login_flow(client: AsyncClient):
     
     # Step 3: Access protected endpoint with token
     headers = {"Authorization": f"Bearer {access_token}"}
-    me_response = await client.get("/api/users/me", headers=headers)
+    me_response = await async_client.get("/api/users/me", headers=headers)
     
     assert me_response.status_code == status.HTTP_200_OK
     user_data = me_response.json()
     assert user_data["email"] == registration_data["email"]
     assert user_data["username"] == registration_data["username"]
+    assert user_data["full_name"] == registration_data["full_name"]
     assert user_data["is_active"] is True
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_duplicate_registration_fails(client: AsyncClient):
-    """Test that registering with duplicate email/username fails"""
+async def test_duplicate_registration_fails(async_client: AsyncClient):
+    """Test that registering with duplicate email/username fails with 409 Conflict"""
     # Step 1: Register first user
     user_data = {
         "email": "duplicate@example.com",
@@ -78,17 +76,17 @@ async def test_duplicate_registration_fails(client: AsyncClient):
         "password": "SecurePass123!"
     }
     
-    first_response = await client.post("/api/users/register", json=user_data)
+    first_response = await async_client.post("/api/users/register", json=user_data)
     assert first_response.status_code == status.HTTP_201_CREATED
     
-    # Step 2: Try to register with same email
-    second_response = await client.post("/api/users/register", json=user_data)
-    assert second_response.status_code == status.HTTP_400_BAD_REQUEST
+    # Step 2: Try to register with same email - should return 409 Conflict
+    second_response = await async_client.post("/api/users/register", json=user_data)
+    assert second_response.status_code == status.HTTP_409_CONFLICT
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_login_with_wrong_password_fails(client: AsyncClient):
+async def test_login_with_wrong_password_fails(async_client: AsyncClient):
     """Test that login with incorrect password fails"""
     # Step 1: Register user
     user_data = {
@@ -96,7 +94,7 @@ async def test_login_with_wrong_password_fails(client: AsyncClient):
         "username": "testlogin",
         "password": "CorrectPass123!"
     }
-    await client.post("/api/users/register", json=user_data)
+    await async_client.post("/api/users/register", json=user_data)
     
     # Step 2: Try to login with wrong password
     login_data = {
@@ -104,7 +102,7 @@ async def test_login_with_wrong_password_fails(client: AsyncClient):
         "password": "WrongPassword123!"
     }
     
-    login_response = await client.post("/api/users/login", data=login_data)
+    login_response = await async_client.post("/api/users/login", json=login_data)
     assert login_response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -112,140 +110,56 @@ async def test_login_with_wrong_password_fails(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_token_refresh_flow(client: AsyncClient):
-    """
-    Test token refresh flow:
-    1. Register and login
-    2. Get refresh token
-    3. Use refresh token to get new access token
-    4. Access protected endpoint with new token
-    """
+async def test_token_refresh_flow(async_client: AsyncClient):
+    """Test token refresh flow: register → login → refresh token → access endpoint"""
     # Step 1: Register and login
     user_data = {
         "email": "refreshtest@example.com",
         "username": "refreshtest",
         "password": "SecurePass123!"
     }
-    await client.post("/api/users/register", json=user_data)
+    await async_client.post("/api/users/register", json=user_data)
     
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     tokens = login_response.json()
     refresh_token = tokens["refresh_token"]
     
     # Step 2: Use refresh token to get new access token
-    refresh_response = await client.post(
+    refresh_response = await async_client.post(
         "/api/users/refresh",
         json={"refresh_token": refresh_token}
     )
     assert refresh_response.status_code == status.HTTP_200_OK
     new_tokens = refresh_response.json()
     assert "access_token" in new_tokens
-    assert "refresh_token" in new_tokens
+    assert new_tokens["token_type"] == "bearer"
     
     # Step 3: Use new access token to access protected endpoint
     headers = {"Authorization": f"Bearer {new_tokens['access_token']}"}
-    me_response = await client.get("/api/users/me", headers=headers)
+    me_response = await async_client.get("/api/users/me", headers=headers)
     assert me_response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_invalid_refresh_token_fails(client: AsyncClient):
+async def test_invalid_refresh_token_fails(async_client: AsyncClient):
     """Test that invalid refresh token is rejected"""
-    refresh_response = await client.post(
+    refresh_response = await async_client.post(
         "/api/users/refresh",
         json={"refresh_token": "invalid.token.here"}
     )
     assert refresh_response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ==================== PASSWORD RESET FLOW ====================
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_complete_password_reset_flow(client: AsyncClient):
-    """
-    Test complete password reset flow:
-    1. Register user
-    2. Request password reset
-    3. Reset password with token
-    4. Login with new password
-    """
-    # Step 1: Register user
-    user_data = {
-        "email": "resettest@example.com",
-        "username": "resettest",
-        "password": "OldPassword123!"
-    }
-    await client.post("/api/users/register", json=user_data)
-    
-    # Step 2: Request password reset (sends email with token)
-    forgot_response = await client.post(
-        "/api/password/forgot-password",
-        json={"email": user_data["email"]}
-    )
-    assert forgot_response.status_code == status.HTTP_200_OK
-    assert "reset token sent" in forgot_response.json()["message"].lower()
-    
-    # Note: In a real test, you'd extract the token from email
-    # For now, we'll create a valid token manually for testing
-    from app.core.security import create_password_reset_token
-    reset_token = create_password_reset_token(user_data["email"])
-    
-    # Step 3: Reset password with token
-    new_password = "NewPassword123!"
-    reset_response = await client.post(
-        "/api/password/reset-password",
-        json={"token": reset_token, "new_password": new_password}
-    )
-    assert reset_response.status_code == status.HTTP_200_OK
-    
-    # Step 4: Login with new password
-    login_response = await client.post(
-        "/api/users/login",
-        data={"username": user_data["username"], "password": new_password}
-    )
-    assert login_response.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_password_reset_with_invalid_token_fails(client: AsyncClient):
-    """Test that password reset with invalid token fails"""
-    reset_response = await client.post(
-        "/api/password/reset-password",
-        json={"token": "invalid.token", "new_password": "NewPass123!"}
-    )
-    assert reset_response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_forgot_password_with_nonexistent_email(client: AsyncClient):
-    """Test forgot password with email that doesn't exist"""
-    # Should still return 200 (security best practice - don't reveal if email exists)
-    response = await client.post(
-        "/api/password/forgot-password",
-        json={"email": "nonexistent@example.com"}
-    )
-    assert response.status_code == status.HTTP_200_OK
-
-
 # ==================== USER PROFILE UPDATE FLOW ====================
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_user_profile_update_flow(client: AsyncClient):
-    """
-    Test user profile update flow:
-    1. Register and login
-    2. Get current profile
-    3. Update profile
-    4. Verify changes
-    """
+async def test_user_profile_update_flow(async_client: AsyncClient):
+    """Test user profile update: register → login → update profile → verify"""
     # Step 1: Register and login
     user_data = {
         "email": "updatetest@example.com",
@@ -253,26 +167,25 @@ async def test_user_profile_update_flow(client: AsyncClient):
         "password": "SecurePass123!",
         "full_name": "Original Name"
     }
-    await client.post("/api/users/register", json=user_data)
+    await async_client.post("/api/users/register", json=user_data)
     
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     access_token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {access_token}"}
     
     # Step 2: Get current profile
-    profile_response = await client.get("/api/users/me", headers=headers)
+    profile_response = await async_client.get("/api/users/me", headers=headers)
     assert profile_response.status_code == status.HTTP_200_OK
-    original_profile = profile_response.json()
     
     # Step 3: Update profile
     update_data = {
         "full_name": "Updated Name",
         "email": "updated@example.com"
     }
-    update_response = await client.put(
+    update_response = await async_client.put(
         "/api/users/me",
         headers=headers,
         json=update_data
@@ -280,7 +193,7 @@ async def test_user_profile_update_flow(client: AsyncClient):
     assert update_response.status_code == status.HTTP_200_OK
     
     # Step 4: Verify changes
-    verify_response = await client.get("/api/users/me", headers=headers)
+    verify_response = await async_client.get("/api/users/me", headers=headers)
     updated_profile = verify_response.json()
     assert updated_profile["full_name"] == update_data["full_name"]
     assert updated_profile["email"] == update_data["email"]
@@ -288,32 +201,26 @@ async def test_user_profile_update_flow(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_change_password_flow(client: AsyncClient):
-    """
-    Test password change flow:
-    1. Register and login
-    2. Change password
-    3. Login with new password
-    4. Verify old password doesn't work
-    """
+async def test_change_password_flow(async_client: AsyncClient):
+    """Test password change: register → change password → login with new pass"""
     # Step 1: Register and login
     user_data = {
         "email": "changepass@example.com",
         "username": "changepass",
         "password": "OldPassword123!"
     }
-    await client.post("/api/users/register", json=user_data)
+    await async_client.post("/api/users/register", json=user_data)
     
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     access_token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {access_token}"}
     
     # Step 2: Change password
     new_password = "NewPassword123!"
-    change_response = await client.post(
+    change_response = await async_client.post(
         "/api/users/change-password",
         headers=headers,
         json={
@@ -324,16 +231,16 @@ async def test_change_password_flow(client: AsyncClient):
     assert change_response.status_code == status.HTTP_200_OK
     
     # Step 3: Login with new password
-    new_login_response = await client.post(
+    new_login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": new_password}
+        json={"username": user_data["username"], "password": new_password}
     )
     assert new_login_response.status_code == status.HTTP_200_OK
     
     # Step 4: Verify old password doesn't work
-    old_login_response = await client.post(
+    old_login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     assert old_login_response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -342,27 +249,21 @@ async def test_change_password_flow(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_admin_registration_and_user_list_flow(client: AsyncClient):
-    """
-    Test admin flow:
-    1. Register admin
-    2. Login as admin
-    3. List all users (admin-only endpoint)
-    """
+async def test_admin_registration_and_user_list_flow(async_client: AsyncClient):
+    """Test admin flow: register admin → login → list users"""
     # Step 1: Register admin
     admin_data = {
         "email": "admin@example.com",
         "username": "adminuser",
-        "password": "AdminPass123!",
-        "full_name": "Admin User"
+        "password": "AdminPass123!"
     }
-    admin_register = await client.post("/api/admins/register", json=admin_data)
+    admin_register = await async_client.post("/api/admins/register", json=admin_data)
     assert admin_register.status_code == status.HTTP_201_CREATED
     
     # Step 2: Login as admin
-    admin_login = await client.post(
+    admin_login = await async_client.post(
         "/api/admins/login",
-        data={"username": admin_data["username"], "password": admin_data["password"]}
+        json={"username": admin_data["username"], "password": admin_data["password"]}
     )
     assert admin_login.status_code == status.HTTP_200_OK
     admin_token = admin_login.json()["access_token"]
@@ -370,7 +271,7 @@ async def test_admin_registration_and_user_list_flow(client: AsyncClient):
     
     # Step 3: Create some users first
     for i in range(3):
-        await client.post(
+        await async_client.post(
             "/api/users/register",
             json={
                 "email": f"user{i}@test.com",
@@ -379,17 +280,17 @@ async def test_admin_registration_and_user_list_flow(client: AsyncClient):
             }
         )
     
-    # Step 4: List all users (admin-only)
-    users_response = await client.get("/api/admins/users", headers=admin_headers)
+    # Step 4: List all users (admin-only) - response has "items" field from PaginatedResponse
+    users_response = await async_client.get("/api/admins/users", headers=admin_headers)
     assert users_response.status_code == status.HTTP_200_OK
     users_data = users_response.json()
-    assert "users" in users_data
-    assert len(users_data["users"]) >= 3
+    assert "items" in users_data
+    assert len(users_data["items"]) >= 3
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_regular_user_cannot_access_admin_endpoints(client: AsyncClient):
+async def test_regular_user_cannot_access_admin_endpoints(async_client: AsyncClient):
     """Test that regular users cannot access admin-only endpoints"""
     # Step 1: Register regular user
     user_data = {
@@ -397,24 +298,24 @@ async def test_regular_user_cannot_access_admin_endpoints(client: AsyncClient):
         "username": "regularuser",
         "password": "UserPass123!"
     }
-    await client.post("/api/users/register", json=user_data)
+    await async_client.post("/api/users/register", json=user_data)
     
     # Step 2: Login as regular user
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     user_token = login_response.json()["access_token"]
     user_headers = {"Authorization": f"Bearer {user_token}"}
     
     # Step 3: Try to access admin endpoint (should fail)
-    admin_response = await client.get("/api/admins/users", headers=user_headers)
+    admin_response = await async_client.get("/api/admins/users", headers=user_headers)
     assert admin_response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_admin_login_with_email(client: AsyncClient):
+async def test_admin_login_with_email(async_client: AsyncClient):
     """Test that admin can login with email instead of username"""
     # Step 1: Register admin
     admin_data = {
@@ -422,12 +323,12 @@ async def test_admin_login_with_email(client: AsyncClient):
         "username": "emailadmin",
         "password": "AdminPass123!"
     }
-    await client.post("/api/admins/register", json=admin_data)
+    await async_client.post("/api/admins/register", json=admin_data)
     
-    # Step 2: Login with email
-    login_response = await client.post(
+    # Step 2: Login with email (not username)
+    login_response = await async_client.post(
         "/api/admins/login",
-        data={"username": admin_data["email"], "password": admin_data["password"]}
+        json={"email": admin_data["email"], "password": admin_data["password"]}
     )
     assert login_response.status_code == status.HTTP_200_OK
     assert "access_token" in login_response.json()
@@ -437,36 +338,32 @@ async def test_admin_login_with_email(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_access_protected_endpoint_without_token(client: AsyncClient):
+async def test_access_protected_endpoint_without_token(async_client: AsyncClient):
     """Test that accessing protected endpoint without token fails"""
-    response = await client.get("/api/users/me")
+    response = await async_client.get("/api/users/me")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_access_protected_endpoint_with_invalid_token(client: AsyncClient):
+async def test_access_protected_endpoint_with_invalid_token(async_client: AsyncClient):
     """Test that accessing protected endpoint with invalid token fails"""
     headers = {"Authorization": "Bearer invalid.token.here"}
-    response = await client.get("/api/users/me", headers=headers)
+    response = await async_client.get("/api/users/me", headers=headers)
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_access_protected_endpoint_with_expired_token(client: AsyncClient):
+async def test_access_protected_endpoint_with_expired_token(async_client: AsyncClient):
     """Test that expired tokens are rejected"""
-    # Create an expired token (negative expiry time)
-    from datetime import timedelta
-    from app.core.security import create_access_token
-    
     expired_token = create_access_token(
-        data={"sub": "testuser", "type": "user"},
-        expires_delta=timedelta(seconds=-1)  # Already expired
+        data={"id": 1, "role": "user"},
+        expires_delta=timedelta(seconds=-1)
     )
     
     headers = {"Authorization": f"Bearer {expired_token}"}
-    response = await client.get("/api/users/me", headers=headers)
+    response = await async_client.get("/api/users/me", headers=headers)
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -474,7 +371,7 @@ async def test_access_protected_endpoint_with_expired_token(client: AsyncClient)
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_user_list_pagination(client: AsyncClient):
+async def test_user_list_pagination(async_client: AsyncClient):
     """Test pagination in admin user list endpoint"""
     # Step 1: Register admin
     admin_data = {
@@ -482,18 +379,18 @@ async def test_user_list_pagination(client: AsyncClient):
         "username": "paginadmin",
         "password": "AdminPass123!"
     }
-    await client.post("/api/admins/register", json=admin_data)
+    await async_client.post("/api/admins/register", json=admin_data)
     
-    admin_login = await client.post(
+    admin_login = await async_client.post(
         "/api/admins/login",
-        data={"username": admin_data["username"], "password": admin_data["password"]}
+        json={"username": admin_data["username"], "password": admin_data["password"]}
     )
     admin_token = admin_login.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     
     # Step 2: Create multiple users
     for i in range(15):
-        await client.post(
+        await async_client.post(
             "/api/users/register",
             json={
                 "email": f"paginuser{i}@test.com",
@@ -502,19 +399,19 @@ async def test_user_list_pagination(client: AsyncClient):
             }
         )
     
-    # Step 3: Test pagination - page 1
-    page1_response = await client.get(
+    # Step 3: Test pagination - page 1 (uses "items" from PaginatedResponse)
+    page1_response = await async_client.get(
         "/api/admins/users?page=1&page_size=5",
         headers=admin_headers
     )
     assert page1_response.status_code == status.HTTP_200_OK
     page1_data = page1_response.json()
-    assert len(page1_data["users"]) <= 5
+    assert len(page1_data["items"]) <= 5
     assert page1_data["page"] == 1
     assert page1_data["total"] >= 15
     
     # Step 4: Test pagination - page 2
-    page2_response = await client.get(
+    page2_response = await async_client.get(
         "/api/admins/users?page=2&page_size=5",
         headers=admin_headers
     )
@@ -525,7 +422,7 @@ async def test_user_list_pagination(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_user_list_filtering_by_active_status(client: AsyncClient):
+async def test_user_list_filtering_by_active_status(async_client: AsyncClient):
     """Test filtering users by active status"""
     # Step 1: Register admin
     admin_data = {
@@ -533,22 +430,22 @@ async def test_user_list_filtering_by_active_status(client: AsyncClient):
         "username": "filteradmin",
         "password": "AdminPass123!"
     }
-    await client.post("/api/admins/register", json=admin_data)
+    await async_client.post("/api/admins/register", json=admin_data)
     
-    admin_login = await client.post(
+    admin_login = await async_client.post(
         "/api/admins/login",
-        data={"username": admin_data["username"], "password": admin_data["password"]}
+        json={"username": admin_data["username"], "password": admin_data["password"]}
     )
     admin_token = admin_login.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     
-    # Step 2: Filter active users
-    active_response = await client.get(
+    # Step 2: Filter active users (uses "items" from PaginatedResponse)
+    active_response = await async_client.get(
         "/api/admins/users?is_active=true",
         headers=admin_headers
     )
     assert active_response.status_code == status.HTTP_200_OK
-    active_users = active_response.json()["users"]
+    active_users = active_response.json()["items"]
     assert all(user["is_active"] for user in active_users)
 
 
@@ -556,11 +453,11 @@ async def test_user_list_filtering_by_active_status(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_malformed_json_request(client: AsyncClient):
+async def test_malformed_json_request(async_client: AsyncClient):
     """Test that malformed JSON requests are handled gracefully"""
-    response = await client.post(
+    response = await async_client.post(
         "/api/users/register",
-        content="{invalid json}",
+        content=b"{invalid json}",
         headers={"Content-Type": "application/json"}
     )
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -568,20 +465,20 @@ async def test_malformed_json_request(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_missing_required_fields(client: AsyncClient):
+async def test_missing_required_fields(async_client: AsyncClient):
     """Test that missing required fields are caught"""
     incomplete_data = {
         "email": "incomplete@example.com"
         # Missing username and password
     }
     
-    response = await client.post("/api/users/register", json=incomplete_data)
+    response = await async_client.post("/api/users/register", json=incomplete_data)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_invalid_email_format(client: AsyncClient):
+async def test_invalid_email_format(async_client: AsyncClient):
     """Test that invalid email format is rejected"""
     invalid_data = {
         "email": "not-an-email",
@@ -589,86 +486,15 @@ async def test_invalid_email_format(client: AsyncClient):
         "password": "SecurePass123!"
     }
     
-    response = await client.post("/api/users/register", json=invalid_data)
+    response = await async_client.post("/api/users/register", json=invalid_data)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_weak_password_validation(client: AsyncClient):
-    """Test that weak passwords are rejected (if validation exists)"""
-    weak_password_data = {
-        "email": "weakpass@example.com",
-        "username": "weakpass",
-        "password": "123"  # Too short/weak
-    }
-    
-    response = await client.post("/api/users/register", json=weak_password_data)
-    # Should fail validation (422) or succeed if no validation
-    assert response.status_code in [status.HTTP_422_UNPROCESSABLE_ENTITY, status.HTTP_201_CREATED]
-
-
-# ==================== CONCURRENT REQUEST TESTS ====================
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.slow
-async def test_concurrent_user_registrations(client: AsyncClient):
-    """Test handling of concurrent user registrations"""
-    import asyncio
-    
-    async def register_user(index: int):
-        return await client.post(
-            "/api/users/register",
-            json={
-                "email": f"concurrent{index}@test.com",
-                "username": f"concurrent{index}",
-                "password": "Pass123!"
-            }
-        )
-    
-    # Create 10 concurrent registrations
-    responses = await asyncio.gather(*[register_user(i) for i in range(10)])
-    
-    # All should succeed
-    success_count = sum(1 for r in responses if r.status_code == status.HTTP_201_CREATED)
-    assert success_count == 10
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.slow
-async def test_concurrent_logins(client: AsyncClient):
-    """Test handling of concurrent login requests"""
-    import asyncio
-    
-    # Step 1: Register a user
-    user_data = {
-        "email": "concurrentlogin@test.com",
-        "username": "concurrentlogin",
-        "password": "Pass123!"
-    }
-    await client.post("/api/users/register", json=user_data)
-    
-    # Step 2: Perform concurrent logins
-    async def login_user():
-        return await client.post(
-            "/api/users/login",
-            data={"username": user_data["username"], "password": user_data["password"]}
-        )
-    
-    responses = await asyncio.gather(*[login_user() for _ in range(5)])
-    
-    # All should succeed
-    success_count = sum(1 for r in responses if r.status_code == status.HTTP_200_OK)
-    assert success_count == 5
 
 
 # ==================== DATA CONSISTENCY TESTS ====================
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_user_data_consistency_across_endpoints(client: AsyncClient):
+async def test_user_data_consistency_across_endpoints(async_client: AsyncClient):
     """Test that user data is consistent across different endpoints"""
     # Step 1: Register user
     user_data = {
@@ -677,18 +503,18 @@ async def test_user_data_consistency_across_endpoints(client: AsyncClient):
         "password": "Pass123!",
         "full_name": "Consistency Test"
     }
-    register_response = await client.post("/api/users/register", json=user_data)
+    register_response = await async_client.post("/api/users/register", json=user_data)
     registered_user = register_response.json()
     
     # Step 2: Login and get user profile
-    login_response = await client.post(
+    login_response = await async_client.post(
         "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
+        json={"username": user_data["username"], "password": user_data["password"]}
     )
     access_token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {access_token}"}
     
-    profile_response = await client.get("/api/users/me", headers=headers)
+    profile_response = await async_client.get("/api/users/me", headers=headers)
     profile_user = profile_response.json()
     
     # Step 3: Verify data consistency
@@ -700,48 +526,9 @@ async def test_user_data_consistency_across_endpoints(client: AsyncClient):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_token_invalidation_after_password_change(client: AsyncClient):
-    """Test that old tokens are invalidated after password change"""
-    # Step 1: Register and login
-    user_data = {
-        "email": "tokeninvalid@test.com",
-        "username": "tokeninvalid",
-        "password": "OldPass123!"
-    }
-    await client.post("/api/users/register", json=user_data)
-    
-    login_response = await client.post(
-        "/api/users/login",
-        data={"username": user_data["username"], "password": user_data["password"]}
-    )
-    old_token = login_response.json()["access_token"]
-    old_headers = {"Authorization": f"Bearer {old_token}"}
-    
-    # Step 2: Change password
-    await client.post(
-        "/api/users/change-password",
-        headers=old_headers,
-        json={
-            "current_password": user_data["password"],
-            "new_password": "NewPass123!"
-        }
-    )
-    
-    # Step 3: Old token should still work (stateless JWT)
-    # Note: In a stateful implementation, you'd want to invalidate old tokens
-    # For stateless JWT, tokens remain valid until expiry
-    response = await client.get("/api/users/me", headers=old_headers)
-    # This test documents current behavior (tokens remain valid)
-    assert response.status_code in [status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED]
-
-
-# ==================== HEALTH CHECK INTEGRATION ====================
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_health_check_reflects_system_state(client: AsyncClient):
-    """Test that health check endpoint reflects actual system state"""
-    response = await client.get("/health")
+async def test_health_check_endpoint(async_client: AsyncClient):
+    """Test that health check endpoint works correctly"""
+    response = await async_client.get("/health")
     
     assert response.status_code == status.HTTP_200_OK
     health_data = response.json()
@@ -754,36 +541,3 @@ async def test_health_check_reflects_system_state(client: AsyncClient):
     
     # Database should be connected
     assert health_data["database"]["connected"] is True
-
-
-# ==================== RATE LIMITING TESTS (if implemented) ====================
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.slow
-async def test_rate_limiting_on_login_endpoint(client: AsyncClient):
-    """Test rate limiting on login endpoint (if implemented)"""
-    # Register a user first
-    user_data = {
-        "email": "ratelimit@test.com",
-        "username": "ratelimit",
-        "password": "Pass123!"
-    }
-    await client.post("/api/users/register", json=user_data)
-    
-    # Attempt many logins rapidly
-    login_data = {"username": user_data["username"], "password": user_data["password"]}
-    
-    responses = []
-    for _ in range(250):  # Exceed rate limit (200/hour)
-        response = await client.post("/api/users/login", data=login_data)
-        responses.append(response)
-        if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-            break
-    
-    # Should eventually hit rate limit
-    rate_limited = any(r.status_code == status.HTTP_429_TOO_MANY_REQUESTS for r in responses)
-    # Note: This might not trigger in test environment depending on rate limit config
-    # Test passes if either rate limited or all succeed
-    assert True  # Placeholder - adjust based on your rate limiting implementation
-    

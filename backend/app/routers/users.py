@@ -1,8 +1,14 @@
+"""
+FILE: backend/app/routers/users.py - UPDATED WITH FIXES
+- Fixed datetime.utcnow() deprecation warnings
+- Ensured full_name is handled in all responses
+"""
+
 from fastapi import APIRouter, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from sqlalchemy.exc import IntegrityError
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from typing import Any, Optional
 from sqlalchemy import func
 
@@ -41,17 +47,6 @@ async def register_user(
     """
     Register a new user with hashed password.
     Ensures unique username and email.
-    
-    Args:
-        user_in: UserCreate schema with username, email, password
-        session: Database session
-    
-    Returns:
-        UserRead: Created user object
-    
-    Raises:
-        UsernameAlreadyExistsException: If username already exists
-        EmailAlreadyExistsException: If email already registered
     """
     logger.info(f"Registering new user: {user_in.username}")
 
@@ -73,6 +68,7 @@ async def register_user(
     new_user = User(
         username=user_in.username,
         email=user_in.email,
+        full_name=user_in.full_name,
         hashed_password=hash_password(user_in.password),
     )
 
@@ -98,19 +94,7 @@ async def login_user(
     user_in: UserLogin,
     session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
-    """
-    Authenticate user and return JWT access + refresh tokens.
-    
-    Args:
-        user_in: UserLogin schema with username and password
-        session: Database session
-    
-    Returns:
-        dict with access_token, refresh_token, and token_type
-    
-    Raises:
-        AuthenticationException: If credentials invalid or user inactive
-    """
+    """Authenticate user and return JWT access + refresh tokens."""
     logger.info(f"Login attempt for user: {user_in.username}")
 
     result = await session.execute(
@@ -143,18 +127,7 @@ async def login_user(
 
 @router.post("/refresh", response_model=TokenRefresh)
 async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
-    """
-    Issue a new access token using a valid refresh token.
-    
-    Args:
-        token_request: RefreshTokenRequest with refresh_token
-    
-    Returns:
-        dict with new access_token and token_type
-    
-    Raises:
-        AuthenticationException: If refresh token invalid or expired
-    """
+    """Issue a new access token using a valid refresh token."""
     from backend.app.core.security import validate_refresh_token
 
     logger.info("Token refresh requested")
@@ -177,15 +150,7 @@ async def refresh_token(token_request: RefreshTokenRequest) -> dict[str, Any]:
 async def get_current_user_profile(
     current_user: User = Depends(get_current_user)
 ) -> User:
-    """
-    Get current authenticated user's profile.
-    
-    Returns:
-        User: Current user object with all profile information
-    
-    Requires:
-        Valid JWT token in Authorization header
-    """
+    """Get current authenticated user's profile."""
     logger.info(f"Fetching profile for user: {current_user.username}")
     return current_user
 
@@ -196,25 +161,7 @@ async def update_user_profile(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ) -> User:
-    """
-    Update current authenticated user's profile.
-    Users can only update their username and email.
-    
-    Args:
-        user_update: UserProfileUpdate with username and/or email
-        current_user: Current authenticated user
-        session: Database session
-    
-    Returns:
-        User: Updated user object
-    
-    Raises:
-        UsernameAlreadyExistsException: If new username already taken
-        EmailAlreadyExistsException: If new email already registered
-    
-    Requires:
-        Valid JWT token in Authorization header
-    """
+    """Update current authenticated user's profile."""
     logger.info(f"Updating profile for user: {current_user.username}")
 
     # Check if username is being updated
@@ -241,8 +188,13 @@ async def update_user_profile(
         current_user.email = user_update.email
         logger.info(f"Email updated to: {user_update.email}")
 
-    # Update timestamp
-    current_user.updated_at = datetime.utcnow()
+    # Update full_name if provided
+    if user_update.full_name is not None:
+        current_user.full_name = user_update.full_name
+        logger.info(f"Full name updated to: {user_update.full_name}")
+
+    # Update timestamp with timezone-aware datetime
+    current_user.updated_at = datetime.now(timezone.utc)
 
     # Save changes
     session.add(current_user)
@@ -259,24 +211,7 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ) -> dict:
-    """
-    Change current authenticated user's password.
-    
-    Args:
-        password_data: ChangePasswordRequest with current and new passwords
-        current_user: Current authenticated user
-        session: Database session
-    
-    Returns:
-        dict: Success message
-    
-    Raises:
-        AuthenticationException: If current password incorrect
-        BusinessLogicException: If new password matches current password
-    
-    Requires:
-        Valid JWT token in Authorization header
-    """
+    """Change current authenticated user's password."""
     logger.info(f"Password change requested for user: {current_user.username}")
 
     # Verify current password
@@ -293,7 +228,7 @@ async def change_password(
 
     # Hash and update password
     current_user.hashed_password = hash_password(password_data.new_password)
-    current_user.updated_at = datetime.utcnow()
+    current_user.updated_at = datetime.now(timezone.utc)
 
     # Save changes
     session.add(current_user)
@@ -311,35 +246,16 @@ async def list_users(
     current_admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_session)
 ) -> dict:
-    """
-    List all users with pagination and optional filtering (Admin only).
-    
-    Args:
-        page: Page number (default: 1, must be >= 1)
-        page_size: Items per page (default: 10, max: 100)
-        is_active: Filter by active status (optional: true/false)
-        current_admin: Current authenticated admin
-        session: Database session
-    
-    Returns:
-        dict: Paginated response with users, total count, and metadata
-    
-    Requires:
-        Valid admin JWT token in Authorization header
-    """
+    """List all users with pagination and optional filtering (Admin only)."""
     logger.info(f"Admin listing users - page: {page}, page_size: {page_size}, is_active: {is_active}")
 
     # Validate pagination parameters
     if page < 1:
         logger.warning(f"Invalid page number: {page}")
-        raise BusinessLogicException(
-            message="Page must be >= 1"
-        )
+        raise BusinessLogicException(message="Page must be >= 1")
     if page_size < 1 or page_size > 100:
         logger.warning(f"Invalid page size: {page_size}")
-        raise BusinessLogicException(
-            message="Page size must be between 1 and 100"
-        )
+        raise BusinessLogicException(message="Page size must be between 1 and 100")
 
     # Build query
     query = select(User)

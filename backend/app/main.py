@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from backend.app.core.config import settings
-from backend.app.routers import users, admins
+from backend.app.routers import users, admins, health
 from backend.app.core.startup_checks import perform_startup_checks
 from backend.app.api.endpoints import test_email, password_reset
 from backend.app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
@@ -184,26 +184,13 @@ app.add_middleware(
 )
 
 # === Include Routers ===
+app.include_router(health.router, tags=["System"])
 app.include_router(users.router, prefix="/api", tags=["Users"])
 app.include_router(admins.router, prefix="/api", tags=["Admins"])
 app.include_router(password_reset.router, prefix="/api/password", tags=["Password Reset"])
 app.include_router(test_email.router, prefix="/api", tags=["Testing"])
 
 # === System Endpoints ===
-
-@app.get("/health", tags=["System"])
-async def health_check():
-    """
-    Health check endpoint - no rate limit
-    Returns minimal system health info.
-    """
-    return {
-        "status": "healthy",
-        "project": settings.project_name,
-        "version": settings.version,
-        "environment": settings.environment,
-        "email_configured": settings.email_enabled,
-    }
 
 @app.get("/", tags=["System"])
 async def root():

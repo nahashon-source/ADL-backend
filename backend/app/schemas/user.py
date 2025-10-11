@@ -1,14 +1,13 @@
-
-from pydantic import BaseModel, EmailStr, StringConstraints, ConfigDict
-from typing import Annotated
+from pydantic import BaseModel, EmailStr, StringConstraints, ConfigDict, Field
+from typing import Annotated, Optional
 from datetime import datetime
-from typing import Optional
 
 
 # ---------- Base ----------
 class UserBase(BaseModel):
     username: str
     email: EmailStr
+    full_name: Optional[str] = None
     is_active: bool = True
     is_superuser: bool = False
 
@@ -18,6 +17,7 @@ class UserCreate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)]
     email: EmailStr
     password: Annotated[str, StringConstraints(min_length=8)]
+    full_name: Optional[str] = Field(default=None, description="User's full name")
 
 
 # ---------- Login ----------
@@ -37,7 +37,6 @@ class UserRead(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    # ✅ Fixed: Use model_config instead of class Config
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -45,6 +44,7 @@ class UserRead(UserBase):
 class UserUpdate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)] | None = None
     email: EmailStr | None = None
+    full_name: Optional[str] = None
     password: Annotated[str, StringConstraints(min_length=8)] | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None
@@ -53,6 +53,7 @@ class UserUpdate(BaseModel):
 class UserProfileUpdate(BaseModel):
     username: Annotated[str, StringConstraints(min_length=3, max_length=50)] | None = None
     email: EmailStr | None = None
+    full_name: Optional[str] = None
 
 
 # ---------- Change Password ----------
@@ -70,3 +71,5 @@ class UserListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+    model_config = ConfigDict(from_attributes=True)

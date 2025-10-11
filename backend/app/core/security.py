@@ -1,9 +1,10 @@
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
 from fastapi import HTTPException, status
 from backend.app.core.config import settings
+from backend.app.core.exceptions import InvalidTokenException
 
 
 def hash_password(password: str) -> str:
@@ -36,12 +37,10 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     Create a JWT token containing `data` (e.g., user id, role).
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-
-from backend.app.core.exceptions import InvalidTokenException
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     """
