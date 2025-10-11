@@ -1,0 +1,52 @@
+global:
+  resolve_timeout: 5m
+
+# Alert routing
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+  
+  routes:
+    # Critical alerts
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: true
+    
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+
+# Alert receivers
+receivers:
+  - name: 'default'
+    # Default receiver - logs only for now
+    
+  - name: 'critical-alerts'
+    # Add email or Slack webhook here
+    # Example:
+    # email_configs:
+    #   - to: 'admin@yourdomain.com'
+    #     from: 'alerts@yourdomain.com'
+    #     smarthost: 'smtp.gmail.com:587'
+    #     auth_username: 'alerts@yourdomain.com'
+    #     auth_password: 'your-app-password'
+
+  - name: 'warning-alerts'
+    # Add Slack webhook for warnings
+    # slack_configs:
+    #   - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+    #     channel: '#alerts'
+    #     title: 'Warning Alert'
+
+# Inhibition rules (suppress alerts)
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']

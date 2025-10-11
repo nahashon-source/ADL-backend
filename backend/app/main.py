@@ -4,8 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+import time
+
 from backend.app.core.config import settings
-from backend.app.routers import users, admins, health
+from backend.app.routers import users, admins, health, metrics
+from backend.app.routers.metrics import (
+    http_requests_total,
+    http_request_duration_seconds,
+    http_requests_in_progress,
+    http_errors_total
+)
 from backend.app.core.startup_checks import perform_startup_checks
 from backend.app.api.endpoints import test_email, password_reset
 from backend.app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
@@ -86,9 +94,11 @@ async def lifespan(app: FastAPI):
         logger.info("📧 Email service: NOT CONFIGURED")
     
     logger.info("🗄️  Database: PostgreSQL (configured)")
+    logger.info("📊 Prometheus metrics: ENABLED at /metrics")
     logger.info("=" * 60)
     logger.info("✅ Application started successfully!")
     logger.info(f"📚 API Documentation: http://localhost:{settings.backend_port}/docs")
+    logger.info(f"📈 Metrics Endpoint: http://localhost:{settings.backend_port}/metrics")
     logger.info("=" * 60)
     
     yield  # Application runs here
@@ -117,7 +127,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    lifespan=lifespan,  # ✅ Use lifespan instead of deprecated on_event
+    lifespan=lifespan,
 )
 
 # === Add Rate Limiting ===
@@ -136,7 +146,7 @@ app.add_exception_handler(ValidationException, validation_exception_handler)
 app.add_exception_handler(RateLimitException, rate_limit_exceeded_handler)
 app.add_exception_handler(EmailServiceException, email_service_exception_handler)
 app.add_exception_handler(DatabaseException, database_exception_handler)
-app.add_exception_handler(AppException, app_exception_handler)  # General AppException AFTER specific ones
+app.add_exception_handler(AppException, app_exception_handler)
 
 # SQLAlchemy exceptions
 app.add_exception_handler(SQLAlchemyError, database_exception_handler)
@@ -166,6 +176,83 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # === MIDDLEWARE REGISTRATION ===
 # Order matters! Middleware is executed in reverse order of registration
 
+# ============= PROMETHEUS MIDDLEWARE =============
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    """
+    Middleware to collect Prometheus metrics for all HTTP requests.
+    """
+    # Skip metrics collection for /metrics endpoint to avoid recursion
+    if request.url.path == "/metrics":
+        return await call_next(request)
+    
+    # Normalize endpoint path (remove IDs, etc.)
+    endpoint = request.url.path
+    method = request.method
+    
+    # Track in-progress requests
+    http_requests_in_progress.labels(method=method, endpoint=endpoint).inc()
+    
+    # Start timer
+    start_time = time.time()
+    
+    try:
+        # Process request
+        response = await call_next(request)
+        duration = time.time() - start_time
+        
+        # Record metrics
+        http_requests_total.labels(
+            method=method,
+            endpoint=endpoint,
+            status=response.status_code
+        ).inc()
+        
+        http_request_duration_seconds.labels(
+            method=method,
+            endpoint=endpoint
+        ).observe(duration)
+        
+        # Track errors
+        if response.status_code >= 400:
+            error_type = f"http_{response.status_code}"
+            http_errors_total.labels(
+                method=method,
+                endpoint=endpoint,
+                error_type=error_type
+            ).inc()
+        
+        return response
+        
+    except Exception as e:
+        duration = time.time() - start_time
+        
+        # Record error metrics
+        http_requests_total.labels(
+            method=method,
+            endpoint=endpoint,
+            status=500
+        ).inc()
+        
+        http_request_duration_seconds.labels(
+            method=method,
+            endpoint=endpoint
+        ).observe(duration)
+        
+        http_errors_total.labels(
+            method=method,
+            endpoint=endpoint,
+            error_type=type(e).__name__
+        ).inc()
+        
+        raise
+    
+    finally:
+        # Decrement in-progress counter
+        http_requests_in_progress.labels(method=method, endpoint=endpoint).dec()
+
+# ================================================
+
 # 1. Security Headers (FIRST - applies to all responses)
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -185,6 +272,7 @@ app.add_middleware(
 
 # === Include Routers ===
 app.include_router(health.router, tags=["System"])
+app.include_router(metrics.router, tags=["Monitoring"])
 app.include_router(users.router, prefix="/api", tags=["Users"])
 app.include_router(admins.router, prefix="/api", tags=["Admins"])
 app.include_router(password_reset.router, prefix="/api/password", tags=["Password Reset"])
@@ -204,29 +292,21 @@ async def root():
         "docs": "/docs",
         "redoc": "/redoc",
         "health": "/health",
+        "metrics": "/metrics",
     }
+
 
 @app.get("/debug/request-id", tags=["Debug"])
 async def debug_request_id(request: Request):
     """
     Debug endpoint to verify request ID tracking is working.
-    This endpoint will:
-    1. Return the request ID from request.state
-    2. Return the request ID from logging context
-    3. Generate logs that should include the request ID
-    
-    This helps verify the middleware is working correctly.
     """
     from backend.app.core.logging.config import get_request_id
     
-    # Get request ID from request state
     request_id_from_state = getattr(request.state, 'request_id', 'NOT FOUND')
-    
-    # Get request ID from logging context
     request_id_from_context = get_request_id()
     
-    # Generate a debug log message
-    logger.info(f"Debug endpoint called - both IDs should be in the log above this message")
+    logger.info("Debug endpoint called - both IDs should be in the log above this message")
     
     return {
         "debug": "Request ID Tracking Status",
@@ -235,3 +315,17 @@ async def debug_request_id(request: Request):
         "middleware_working": request_id_from_state != "NOT FOUND",
         "logging_context_working": request_id_from_context is not None,
     }
+
+
+@app.get("/debug/routes", tags=["Debug"])
+async def debug_routes():
+    """Debug endpoint to see all registered routes"""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            routes.append({
+                "path": route.path,
+                "methods": list(route.methods) if route.methods else [],
+                "name": route.name
+            })
+    return {"routes": routes}
